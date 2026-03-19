@@ -1,13 +1,19 @@
 import pandas as pd
 import streamlit as st
 
-from pages.physical.config import DATA_PATH, ATTRIBUTES
+from pages.physical.config import DATA_PATH, RAW_DATA_PATH, ATTRIBUTES
 
 
 @st.cache_data
 def load_data() -> pd.DataFrame:
     df = pd.read_csv(DATA_PATH)
     return df.dropna(subset=ATTRIBUTES)
+
+
+@st.cache_data
+def load_raw_data() -> pd.DataFrame:
+    df = pd.read_csv(RAW_DATA_PATH, sep=";")
+    return df
 
 
 def filter_players(df: pd.DataFrame, competition: str, position: str) -> pd.DataFrame:

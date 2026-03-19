@@ -1,4 +1,5 @@
 DATA_PATH = "data/physical/Layer1_Attribute_Results.csv"
+RAW_DATA_PATH = "data/physical/SkillCorner-2026-02-10.csv"
 
 ATTRIBUTES = ["Speed", "Acceleration", "Agility", "Endurance"]
 
