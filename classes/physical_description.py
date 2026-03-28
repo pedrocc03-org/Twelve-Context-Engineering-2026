@@ -135,9 +135,9 @@ class PhysicalDescription(Description):
 
         raw_player = raw_player.iloc[0]
 
-        # Only mention metrics that are notably good or bad
-        notable_strengths = []
-        notable_weaknesses = []
+        # Only call out metrics that are outstanding/excellent or below average/poor
+        standouts = []
+        concerns = []
 
         for attr in ATTRIBUTES:
             info = ATTRIBUTE_INFO[attr]
@@ -165,36 +165,32 @@ class PhysicalDescription(Description):
                 if is_inverted:
                     z = -z
 
-                if not _is_notable(z):
-                    continue
-
                 level = metric_level(z)
-                entry = f"In {col}, which contributes to {attr}, he was {level}."
+                # Only include outstanding/excellent or below average/poor
+                if z > 1.0:
+                    standouts.append(f"His {col} ({attr}) was {level}.")
+                elif z < -0.5:
+                    concerns.append(f"His {col} ({attr}) was {level}.")
 
-                if z > 0.5:
-                    notable_strengths.append(entry)
-                else:
-                    notable_weaknesses.append(entry)
+        if standouts:
+            description += "\n" + " ".join(standouts)
 
-        if notable_strengths:
-            description += "\nNotable strengths in underlying metrics: "
-            description += " ".join(notable_strengths)
-
-        if notable_weaknesses:
-            description += "\nNotable weaknesses in underlying metrics: "
-            description += " ".join(notable_weaknesses)
+        if concerns:
+            description += "\n" + " ".join(concerns)
 
         return description
 
     def get_prompt_messages(self) -> List[Dict[str, str]]:
         prompt = (
-            "Please use the physical profile description enclosed with ``` to give a concise, 4 sentence summary "
+            "Please use the physical profile description enclosed with ``` to give a concise summary "
             "of the player's physical profile, strengths and weaknesses. "
-            "The first sentence should use varied language to give an overview of what kind of athlete this player is. "
-            "The second sentence should describe the player's physical strengths, referencing specific underlying metrics only where they are notably good or excellent. "
+            "Lead with the four qualities — Speed, Acceleration, Agility, and Endurance. "
+            "You may reference specific underlying metrics only when they are a clear standout or a clear concern — do not list them all. "
+            "The first sentence should give an overview of what kind of athlete this player is, mentioning the competition and team. "
+            "The second sentence should describe the player's physical strengths. "
             "The third sentence should describe physical limitations or areas where the player is average or weak. "
-            "Finally, summarise what kind of role or tactical system would suit this player's physical profile. "
-            "Do not mention z-scores, percentile numbers, or ranks. Use natural language throughout. "
+            "Finally, summarise what this physical profile means for the player overall. "
+            "Do not mention z-scores, percentile numbers, or ranks. "
             "Write as a performance analyst would in a report to coaching staff."
         )
         return [{"role": "user", "content": prompt}]
