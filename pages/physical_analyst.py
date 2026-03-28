@@ -5,6 +5,7 @@ from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO
 from pages.physical.data import load_data, load_raw_data, filter_players, get_position_group_df
 from pages.physical.charts import radar_chart, distribution_chart, scout_overview_chart, scout_strip_chart
 from pages.physical.components import player_header_html, score_cards_html, glossary_html
+from classes.physical_description import PhysicalDescription
 
 add_common_page_elements()
 
@@ -66,9 +67,27 @@ st.divider()
 st.markdown(player_header_html(player_row), unsafe_allow_html=True)
 
 # Tabs
-tab_overview, tab_distributions, tab_scout, tab_rankings = st.tabs([
-    "Overview", "Distributions", "Scout View", "Position Group Rankings"
+tab_report, tab_overview, tab_distributions, tab_scout, tab_rankings = st.tabs([
+    "Physical Report", "Overview", "Distributions", "Scout View", "Position Group Rankings"
 ])
+
+with tab_report:
+    report_key = (selected_name, competition, position, "physical_report")
+    col_gen, col_regen = st.columns([4, 1])
+    with col_regen:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        regenerate = st.button("🔄 Regenerate", use_container_width=True)
+
+    if regenerate and report_key in st.session_state:
+        del st.session_state[report_key]
+
+    if report_key not in st.session_state:
+        description = PhysicalDescription(player_row, position_df, raw_position_df)
+        with col_gen:
+            report_text = st.write_stream(description.stream_gpt(stream=True))
+        st.session_state[report_key] = report_text
+    else:
+        st.markdown(st.session_state[report_key])
 
 with tab_overview:
     col_radar, col_scores = st.columns([3, 2])
