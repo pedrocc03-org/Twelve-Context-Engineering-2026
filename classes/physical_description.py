@@ -188,9 +188,9 @@ class PhysicalDescription(Description):
                 friendly = FRIENDLY_NAMES.get(col, col)
                 # Only include outstanding/excellent or below average/poor
                 if z > 1.0:
-                    standouts.append(f"His {friendly} ({attr}) was {level}.")
+                    standouts.append(f"His {friendly} was {level}.")
                 elif z < -0.5:
-                    concerns.append(f"His {friendly} ({attr}) was {level}.")
+                    concerns.append(f"His {friendly} was {level}.")
 
         if standouts:
             description += "\n" + " ".join(standouts)
