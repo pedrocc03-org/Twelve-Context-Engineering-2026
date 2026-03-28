@@ -51,6 +51,25 @@ def _raw_col_name(config_metric: str) -> str:
     return config_metric.replace(" (INV)", "")
 
 
+FRIENDLY_NAMES = {
+    "PSV-99": "top speed",
+    "TOP 5 PSV-99": "average top speed",
+    "TOP 3 Time to Sprint": "time to reach sprint speed",
+    "TOP 3 Time to HSR": "time to reach high-speed running",
+    "TOP 3 Time to Sprint post-COD": "time to sprint after changing direction",
+    "TOP 3 Time to HSR post-COD": "time to reach high-speed running after changing direction",
+    "Explosive Acceleration to Sprint Count P90": "explosive sprint burst volume",
+    "Explosive Acceleration to HSR Count P90": "explosive high-speed running burst volume",
+    "Change of Direction Count P90": "change of direction frequency",
+    "TOP 3 Time to 505 around 90": "90-degree turning speed",
+    "TOP 3 Time to 505 around 180": "180-degree turning speed",
+    "M/min P90": "metres per minute",
+    "Distance P90": "total distance covered",
+    "Running Distance P90": "running distance",
+    "HSR Distance P90": "high-speed running distance",
+}
+
+
 class PhysicalDescription(Description):
     output_token_limit = 250
 
@@ -166,11 +185,12 @@ class PhysicalDescription(Description):
                     z = -z
 
                 level = metric_level(z)
+                friendly = FRIENDLY_NAMES.get(col, col)
                 # Only include outstanding/excellent or below average/poor
                 if z > 1.0:
-                    standouts.append(f"His {col} ({attr}) was {level}.")
+                    standouts.append(f"His {friendly} ({attr}) was {level}.")
                 elif z < -0.5:
-                    concerns.append(f"His {col} ({attr}) was {level}.")
+                    concerns.append(f"His {friendly} ({attr}) was {level}.")
 
         if standouts:
             description += "\n" + " ".join(standouts)
