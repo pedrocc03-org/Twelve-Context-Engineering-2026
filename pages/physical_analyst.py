@@ -92,14 +92,14 @@ with tab_report:
 with tab_overview:
     col_radar, col_scores = st.columns([3, 2])
     with col_radar:
-        st.plotly_chart(radar_chart(player_row), use_container_width=True)
+        st.plotly_chart(radar_chart(player_row, position_df), use_container_width=True)
     with col_scores:
         st.markdown(
             "<div style='font-size:15px;font-weight:600;color:#111;margin-bottom:4px;'>Attribute Scores</div>"
-            "<div style='font-size:12px;color:#666;margin-bottom:16px;'>Percentile vs position group peers</div>",
+            "<div style='font-size:12px;color:#666;margin-bottom:16px;'>Z-score vs position group peers</div>",
             unsafe_allow_html=True,
         )
-        st.markdown(score_cards_html(player_row), unsafe_allow_html=True)
+        st.markdown(score_cards_html(player_row, position_df), unsafe_allow_html=True)
 
 with tab_distributions:
     st.markdown(

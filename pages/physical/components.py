@@ -3,20 +3,12 @@ import pandas as pd
 from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO
 
 
-def score_color(score: float) -> str:
-    if score >= 66:
+def z_score_color(z: float) -> str:
+    if z >= 0.5:
         return "#009940"
-    elif score >= 33:
+    elif z >= -0.5:
         return "#f4a62a"
     return "#e05c5c"
-
-
-def score_label(score: float) -> str:
-    if score >= 80: return "Elite"
-    if score >= 60: return "Good"
-    if score >= 40: return "Average"
-    if score >= 20: return "Below avg"
-    return "Low"
 
 
 def player_header_html(player_row: pd.Series) -> str:
@@ -35,24 +27,25 @@ def player_header_html(player_row: pd.Series) -> str:
     )
 
 
-def score_cards_html(player_row: pd.Series) -> str:
+def score_cards_html(player_row: pd.Series, position_df: pd.DataFrame) -> str:
     cards = []
     for attr in ATTRIBUTES:
-        score = player_row[attr]
-        color = score_color(score)
-        pct   = int(score)
+        mean = position_df[attr].mean()
+        std = position_df[attr].std()
+        z = (player_row[attr] - mean) / std if std > 0 else 0.0
+        color = z_score_color(z)
+        # Map z-score to a 0-100 bar width (clamp between -3 and +3)
+        bar_pct = int(max(0, min(100, (z + 3) / 6 * 100)))
         cards.append(
             f'<div style="background:#ffffff;border:1px solid #ddd;border-left:4px solid {color};'
             f'border-radius:8px;padding:14px 16px;margin-bottom:10px;">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
             f'<span style="font-size:14px;color:#222;font-weight:600;">'
             f'{ATTRIBUTE_INFO[attr]["icon"]} {attr}</span>'
-            f'<div><span style="font-size:22px;font-weight:700;color:{color};">{score:.0f}</span>'
-            f'<span style="font-size:11px;color:#999;margin-left:4px;">/100</span></div></div>'
+            f'<div><span style="font-size:22px;font-weight:700;color:{color};">{z:+.1f}</span></div></div>'
             f'<div style="background:#e8e8e8;border-radius:4px;height:6px;width:100%;overflow:hidden;">'
-            f'<div style="background:{color};height:100%;width:{pct}%;border-radius:4px;"></div></div>'
-            f'<div style="font-size:11px;color:#888;margin-top:5px;text-align:right;">'
-            f'{score_label(score)}</div></div>'
+            f'<div style="background:{color};height:100%;width:{bar_pct}%;border-radius:4px;"></div></div>'
+            f'</div>'
         )
     return "".join(cards)
 
