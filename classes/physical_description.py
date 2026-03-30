@@ -7,26 +7,7 @@ from classes.description import Description
 from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO
 
 
-def physical_level(percentile: float) -> str:
-    """Convert a 0-100 percentile to a descriptive word."""
-    if percentile >= 90:
-        return "exceptional"
-    if percentile >= 80:
-        return "elite"
-    if percentile >= 65:
-        return "well above average"
-    if percentile >= 50:
-        return "above average"
-    if percentile >= 40:
-        return "average"
-    if percentile >= 25:
-        return "below average"
-    if percentile >= 10:
-        return "well below average"
-    return "very poor"
-
-
-def metric_level(z: float) -> str:
+def describe_level(z: float) -> str:
     """Convert a z-score to a descriptive word using course thresholds."""
     if z > 1.5:
         return "outstanding"
@@ -138,11 +119,17 @@ class PhysicalDescription(Description):
             f"All ratings are compared against {n_peers} {p['Position Group']} players.\n\n"
         )
 
-        # High-level attribute summary using word labels
+        # Compute z-scores for each attribute within position group
+        pos_df = self.position_df
         for attr in ATTRIBUTES:
-            score = p[attr]
+            attr_mean = pos_df[attr].mean()
+            attr_std = pos_df[attr].std()
+            if attr_std == 0:
+                z = 0.0
+            else:
+                z = (p[attr] - attr_mean) / attr_std
             description += (
-                f"He was {physical_level(score)} in {attr} "
+                f"He was {describe_level(z)} in {attr} "
                 f"compared to other players in the same position group. "
             )
         description += "\n"
@@ -184,7 +171,7 @@ class PhysicalDescription(Description):
                 if is_inverted:
                     z = -z
 
-                level = metric_level(z)
+                level = describe_level(z)
                 friendly = FRIENDLY_NAMES.get(col, col)
                 # Only include outstanding/excellent or below average/poor
                 if z > 1.0:
