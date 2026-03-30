@@ -170,11 +170,11 @@ def scout_overview_chart(
         ))
         show_player_legend = False
 
-        # Label
+        # Label — attribute name only, no score
         fig.add_annotation(
             x=0,
             y=i + 0.4,
-            text=f"<span>{attr}: {p_score:.1f}</span>",
+            text=f"<span>{attr}</span>",
             showarrow=False,
             font=dict(color=WHITE, family="Gilroy-Light", size=12),
         )

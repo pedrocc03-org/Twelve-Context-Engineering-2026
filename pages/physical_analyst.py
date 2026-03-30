@@ -3,7 +3,7 @@ import streamlit as st
 from utils.page_components import add_common_page_elements
 from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO
 from pages.physical.data import load_data, load_raw_data, filter_players, get_position_group_df
-from pages.physical.charts import radar_chart, distribution_chart, scout_overview_chart, scout_strip_chart
+from pages.physical.charts import radar_chart, scout_overview_chart, scout_strip_chart
 from pages.physical.components import player_header_html, score_cards_html, glossary_html
 from classes.physical_description import PhysicalDescription
 
@@ -67,8 +67,8 @@ st.divider()
 st.markdown(player_header_html(player_row), unsafe_allow_html=True)
 
 # Tabs
-tab_report, tab_overview, tab_distributions, tab_scout, tab_rankings = st.tabs([
-    "Physical Report", "Overview", "Distributions", "Scout View", "Position Group Rankings"
+tab_report, tab_overview, tab_scout, tab_rankings = st.tabs([
+    "Physical Report", "Overview", "Scout View", "Position Group Rankings"
 ])
 
 with tab_report:
@@ -100,20 +100,6 @@ with tab_overview:
             unsafe_allow_html=True,
         )
         st.markdown(score_cards_html(player_row, position_df), unsafe_allow_html=True)
-
-with tab_distributions:
-    st.markdown(
-        f"<div style='font-size:13px;color:#555;margin-bottom:16px;'>"
-        f"<strong style='color:#111;'>{_pos_label}</strong> players "
-        f"({_comp_label}) &nbsp;&mdash;&nbsp; "
-        f"<span style='color:#009940;'>green line</span> = "
-        f"<strong style='color:#111;'>{player_row['Short Name']}</strong></div>",
-        unsafe_allow_html=True,
-    )
-    col1, col2 = st.columns(2)
-    for i, attr in enumerate(ATTRIBUTES):
-        with (col1 if i % 2 == 0 else col2):
-            st.plotly_chart(distribution_chart(position_df, player_row, attr), use_container_width=True)
 
 with tab_scout:
     st.plotly_chart(
