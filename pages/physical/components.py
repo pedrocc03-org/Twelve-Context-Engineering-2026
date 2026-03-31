@@ -107,6 +107,6 @@ def glossary_html() -> str:
     return (
         '<div style="background:#111;border:1px solid #2a2a2a;border-radius:12px;padding:24px 28px;margin:8px 0 16px 0;">'
         '<div style="font-size:19px;font-weight:700;color:#ffffff;margin-bottom:16px;">'
-        "Physical Analyst &mdash; Layer 1 Glossary</div>"
+        "Physical Analyst &mdash; Glossary</div>"
         + intro + "".join(blocks) + "</div>"
     )

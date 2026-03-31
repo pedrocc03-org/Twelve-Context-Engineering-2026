@@ -186,7 +186,36 @@ class Description(ABC):
             str
         """
 
-        st.expander("Chat transcript", expanded=False).write(self.messages)
+        with st.expander("Chat transcript", expanded=False):
+            intro_msgs = self.get_intro_messages()
+            st.markdown("**Step 1 — Who is the AI?** (system prompt)")
+            st.write(intro_msgs)
+
+            try:
+                describe_msgs = self.get_messages_from_excel(self.describe_paths)
+                if describe_msgs:
+                    st.markdown(
+                        "**Step 2 — Tell it what it knows** "
+                        "*(the Q&A pairs below are just examples — "
+                        "swap them for any domain knowledge you want the AI to learn)*"
+                    )
+                    st.write(describe_msgs)
+            except FileNotFoundError:
+                pass
+
+            st.markdown("**Step 3 — Prompt** (what to do with the data)")
+            st.write(self.get_prompt_messages())
+
+            try:
+                example_msgs = self.get_messages_from_excel(self.gpt_examples_path)
+                if example_msgs:
+                    st.markdown("**Step 4 — Few-shot examples** (example outputs)")
+                    st.write(example_msgs)
+            except FileNotFoundError:
+                pass
+
+            st.markdown("**Step 5 — Data** (the synthesized player data)")
+            st.write(self.messages[-1:])
 
         if USE_GEMINI:
             import google.generativeai as genai

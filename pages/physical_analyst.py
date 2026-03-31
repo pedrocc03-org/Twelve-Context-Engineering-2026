@@ -22,7 +22,7 @@ with col_title:
     st.markdown(
         "<h2 style='margin-bottom:2px;'>Physical Analyst</h2>"
         "<p style='color:#888;margin-top:0;font-size:14px;'>"
-        "Layer 1 &nbsp;&middot;&nbsp; Speed &nbsp;&middot;&nbsp; Acceleration"
+        "Speed &nbsp;&middot;&nbsp; Acceleration"
         " &nbsp;&middot;&nbsp; Agility &nbsp;&middot;&nbsp; Endurance</p>",
         unsafe_allow_html=True,
     )
@@ -67,27 +67,9 @@ st.divider()
 st.markdown(player_header_html(player_row), unsafe_allow_html=True)
 
 # Tabs
-tab_report, tab_overview, tab_scout, tab_rankings = st.tabs([
-    "Physical Report", "Overview", "Scout View", "Position Group Rankings"
+tab_overview, tab_scout, tab_rankings = st.tabs([
+    "Overview", "Scout View", "Position Group Rankings"
 ])
-
-with tab_report:
-    report_key = (selected_name, competition, position, "physical_report")
-    col_gen, col_regen = st.columns([4, 1])
-    with col_regen:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        regenerate = st.button("🔄 Regenerate", use_container_width=True)
-
-    if regenerate and report_key in st.session_state:
-        del st.session_state[report_key]
-
-    if report_key not in st.session_state:
-        description = PhysicalDescription(player_row, position_df, raw_position_df)
-        with col_gen:
-            report_text = st.write_stream(description.stream_gpt(stream=True))
-        st.session_state[report_key] = report_text
-    else:
-        st.markdown(st.session_state[report_key])
 
 with tab_overview:
     col_radar, col_scores = st.columns([3, 2])
@@ -145,3 +127,31 @@ with tab_rankings:
         .format({attr: "{:.1f}" for attr in ATTRIBUTES})
     )
     st.dataframe(styled, use_container_width=True, hide_index=True)
+
+# Physical Report — full width at the bottom
+st.divider()
+st.markdown(
+    "<h3 style='margin-bottom:4px;'>Physical Report</h3>",
+    unsafe_allow_html=True,
+)
+
+report_key = (selected_name, competition, position, "physical_report")
+col_gen, col_regen = st.columns([4, 1])
+with col_regen:
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    regenerate = st.button("🔄 Regenerate", use_container_width=True)
+
+if regenerate and report_key in st.session_state:
+    del st.session_state[report_key]
+
+if report_key not in st.session_state:
+    description = PhysicalDescription(player_row, position_df, raw_position_df)
+    with col_gen:
+        report_text = st.write_stream(description.stream_gpt(stream=True))
+    st.session_state[report_key] = report_text
+else:
+    st.markdown(
+        f"<div style='font-size:20px;line-height:1.7;color:#111;'>"
+        f"{st.session_state[report_key]}</div>",
+        unsafe_allow_html=True,
+    )
