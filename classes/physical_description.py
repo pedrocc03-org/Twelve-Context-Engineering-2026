@@ -4,7 +4,7 @@ import pandas as pd
 from scipy.stats import zscore
 
 from classes.description import Description
-from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO
+from pages.physical.config import ATTRIBUTES, ATTRIBUTE_INFO, FRIENDLY_NAMES, METRIC_PHRASES
 
 
 def describe_level(z: float) -> str:
@@ -32,23 +32,53 @@ def _raw_col_name(config_metric: str) -> str:
     return config_metric.replace(" (INV)", "")
 
 
-FRIENDLY_NAMES = {
-    "PSV-99": "top speed",
-    "TOP 5 PSV-99": "average top speed",
-    "TOP 3 Time to Sprint": "time to reach sprint speed",
-    "TOP 3 Time to HSR": "time to reach high-speed running",
-    "TOP 3 Time to Sprint post-COD": "time to sprint after changing direction",
-    "TOP 3 Time to HSR post-COD": "time to reach high-speed running after changing direction",
-    "Explosive Acceleration to Sprint Count P90": "explosive sprint burst volume",
-    "Explosive Acceleration to HSR Count P90": "explosive high-speed running burst volume",
-    "Change of Direction Count P90": "change of direction frequency",
-    "TOP 3 Time to 505 around 90": "90-degree turning speed",
-    "TOP 3 Time to 505 around 180": "180-degree turning speed",
-    "M/min P90": "metres per minute",
-    "Distance P90": "total distance covered",
-    "Running Distance P90": "running distance",
-    "HSR Distance P90": "high-speed running distance",
+STYLE_TEMPLATES = {
+    "Speed": {
+        "outstanding": ["boasts elite top speed", "maximal sprint pace is exceptional"],
+        "excellent": ["runs very fast", "top speed is high"],
+        "good": ["above-average speed", "speeds ahead of many peers"],
+        "average": ["speed is average", "acceleration is typical"],
+        "below average": ["slower than many peers", "speed is a little under average"],
+        "poor": ["struggles to reach high speed", "speed is weak"],
+    },
+    "Acceleration": {
+        "outstanding": ["accelerates like a shot", "burst acceleration is explosive"],
+        "excellent": ["accelerates really fast", "acceleration bursts are powerful"],
+        "good": ["has very strong acceleration", "fast starting speed"],
+        "average": ["acceleration is competent", "acceleration is reasonable"],
+        "below average": ["acceleration is sluggish", "takes time to reach speed"],
+        "poor": ["struggles to accelerate", "acceleration is weak"],
+    },
+    "Agility": {
+        "outstanding": ["turns and changes direction brilliantly", "agility is elite"],
+        "excellent": ["very agile", "sharp and responsive changes of direction"],
+        "good": ["above-average agility", "quick with direction changes"],
+        "average": ["adequate agility", "moves with standard agility"],
+        "below average": ["lacks quickness in tight turns", "agility can be improved"],
+        "poor": ["slow to change direction", "agility is poor"],
+    },
+    "Endurance": {
+        "outstanding": ["maintains peak output all game", "elite stamina"],
+        "excellent": ["strong endurance", "rarely fatigues"],
+        "good": ["good stamina", "maintains pace well"],
+        "average": ["average endurance", "sufficient match fitness"],
+        "below average": ["tends to tire sooner than most", "stamina is a weak point"],
+        "poor": ["struggles with longer minutes", "endurance is poor"],
+    },
 }
+
+
+def describe_style(attr: str, level: str) -> str:
+    """Pick a phrasing variant for the attribute + level.
+
+    This is the wordalisation style mapping layer. It keeps the label logic
+    in `describe_level` but provides more natural variation for output sentences.
+    """
+    options = STYLE_TEMPLATES.get(attr, {}).get(level)
+    if not options:
+        return f"is {level} in {attr.lower()}"
+    return options[0]
+
 
 
 class PhysicalDescription(Description):
@@ -67,10 +97,12 @@ class PhysicalDescription(Description):
         player_row: pd.Series,
         position_df: pd.DataFrame,
         raw_position_df: pd.DataFrame,
+        detailed: bool = False,
     ):
         self.player_row = player_row
         self.position_df = position_df
         self.raw_position_df = raw_position_df
+        self.detailed = detailed
         super().__init__()
 
     def get_intro_messages(self) -> List[Dict[str, str]]:
@@ -109,6 +141,9 @@ class PhysicalDescription(Description):
         return intro
 
     def synthesize_text(self) -> str:
+        return self._synthesize_text(detailed=self.detailed)
+
+    def _synthesize_text(self, detailed: bool = False) -> str:
         p = self.player_row
         raw_df = self.raw_position_df
         n_peers = len(self.position_df)
@@ -128,9 +163,12 @@ class PhysicalDescription(Description):
                 z = 0.0
             else:
                 z = (p[attr] - attr_mean) / attr_std
+
+            level = describe_level(z)
+            style = describe_style(attr, level)
+
             description += (
-                f"He was {describe_level(z)} in {attr} "
-                f"compared to other players in the same position group. "
+                f"He {style} compared to other players in the same position group. "
             )
         description += "\n"
 
@@ -173,11 +211,17 @@ class PhysicalDescription(Description):
 
                 level = describe_level(z)
                 friendly = FRIENDLY_NAMES.get(col, col)
-                # Only include outstanding/excellent or below average/poor
-                if z > 1.0:
-                    standouts.append(f"His {friendly} was {level}.")
-                elif z < -0.5:
-                    concerns.append(f"His {friendly} was {level}.")
+                if detailed:
+                    phrase = METRIC_PHRASES.get(friendly, {}).get(level) or describe_style(attr, level)
+                    if z > 1.0:
+                        standouts.append(f"He {phrase}.")
+                    elif z < -0.5:
+                        concerns.append(f"He {phrase}.")
+                else:
+                    if z > 1.0:
+                        standouts.append(f"His {friendly} was {level}.")
+                    elif z < -0.5:
+                        concerns.append(f"His {friendly} was {level}.")
 
         if standouts:
             description += "\n" + " ".join(standouts)

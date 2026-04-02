@@ -83,7 +83,7 @@ class Visual:
             self.fig,
             config={"displayModeBar": False},
             height=500,
-            use_container_width=True,
+            width="stretch",
         )
 
     def _setup_styles(self):
@@ -158,7 +158,7 @@ class Visual:
             self.fig,
             config={"displayModeBar": False},
             height=500,
-            use_container_width=True,
+            width="stretch",
         )
 
     def close(self):
