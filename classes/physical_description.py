@@ -236,18 +236,27 @@ class PhysicalDescription(Description):
 
     def get_prompt_messages(self) -> List[Dict[str, str]]:
         prompt = (
-            "Please use the physical profile description enclosed with ``` to write a single tactical interpretation "
+            "Please use the physical profile description enclosed with ``` to write a single summary "
             "of the player's physical profile — one sentence, two at most. "
             "This is not a breakdown of each quality. It is a summary that tells coaching staff what kind of athlete "
-            "this player is, where his physicality makes him dangerous, and where it limits him. "
+            "this player is physically, where his physicality is strong, and where it is limited. "
             "Weave strengths and weaknesses together into a cohesive picture rather than listing them separately. "
             "Here is the tone and depth to aim for: "
             "'this profile describes a player whose physical impact is concentrated in short, high-speed moments "
             "rather than sustained output, making him a devastating threat in wide areas when space is available "
             "but less suited to constant high-pressing or lengthy, volume-based running.' "
-            "Use natural, analyst-style language — say 'he is quick' not 'his speed is good'. "
-            "Never capitalise any word mid-sentence. "
-            "Do not mention z-scores, percentile numbers, or ranks. "
-            "Do not start with the player's name — start with the interpretation."
+            "Critical rules: "
+            "- Use direct, plain language. Say 'he has good pace' not 'he combines solid pace'. "
+            "  Say 'he is quick' not 'his speed is good'. Say 'allows him to' not 'enables'. "
+            "- Only describe what the physical data shows. Do not infer tactical behaviours, "
+            "  playing style, or football intelligence from physical metrics alone. For example, "
+            "  do not say he is 'positionally intelligent', that he 'presses', or that he 'stretches defenders' — "
+            "  you can only say what his body can and cannot do, not how he uses it. "
+            "- When describing what a physical profile means, frame it as what the player's physicality "
+            "  would allow or limit, not what he does. For example: 'his agility allows him to change direction quickly' "
+            "  not 'he frequently changes direction'. "
+            "- Never capitalise any word mid-sentence. "
+            "- Do not mention z-scores, percentile numbers, or ranks. "
+            "- Do not start with the player's name — start with the interpretation."
         )
         return [{"role": "user", "content": prompt}]
