@@ -29,7 +29,7 @@ with col_title:
 with col_btn:
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     label = "✕ Close" if st.session_state.glossary_open else "ℹ Glossary"
-    if st.button(label, width="stretch"):
+    if st.button(label, use_container_width=True):
         st.session_state.glossary_open = not st.session_state.glossary_open
 
 if st.session_state.glossary_open:
@@ -74,7 +74,7 @@ tab_overview, tab_scout, tab_rankings = st.tabs([
 with tab_overview:
     col_radar, col_scores = st.columns([3, 2])
     with col_radar:
-        st.plotly_chart(radar_chart(player_row, position_df), width="stretch")
+        st.plotly_chart(radar_chart(player_row, position_df), use_container_width=True)
     with col_scores:
         st.markdown(
             "<div style='font-size:15px;font-weight:600;color:#111;margin-bottom:4px;'>Attribute Scores</div>"
@@ -86,7 +86,7 @@ with tab_overview:
 with tab_scout:
     st.plotly_chart(
         scout_overview_chart(position_df, player_row, selected_name),
-        width="stretch",
+        use_container_width=True,
     )
     st.divider()
     st.markdown(
@@ -100,7 +100,7 @@ with tab_scout:
     for attr in ATTRIBUTES:
         st.plotly_chart(
             scout_strip_chart(raw_position_df, selected_name, attr, ATTRIBUTE_INFO[attr]),
-            width="stretch",
+            use_container_width=True,
         )
 
 with tab_rankings:
@@ -126,7 +126,7 @@ with tab_rankings:
         .apply(highlight_player, axis=1)
         .format({attr: "{:.1f}" for attr in ATTRIBUTES})
     )
-    st.dataframe(styled, width="stretch", hide_index=True)
+    st.dataframe(styled, use_container_width=True, hide_index=True)
 
 # Physical Report — full width at the bottom
 st.divider()
@@ -135,13 +135,13 @@ col_report_title, col_report_mode, col_regen = st.columns([2, 2, 2], vertical_al
 with col_report_title:
     st.markdown("<h3 style='margin:0;'>Physical Report</h3>", unsafe_allow_html=True)
 with col_report_mode:
-    report_mode = st.segmented_control("Mode", ["Basic", "Detailed"], default="Basic", label_visibility="collapsed")
+    report_mode = st.radio("Mode", ["Basic", "Detailed"], index=0, horizontal=True, label_visibility="collapsed")
 with col_regen:
-    regenerate = st.segmented_control("Regenerate", ["🔄 Regenerate"], label_visibility="collapsed")
+    regenerate = st.button("🔄 Regenerate")
 
 report_key = (selected_name, competition, position, "physical_report", report_mode)
 
-if regenerate is not None and report_key in st.session_state:
+if regenerate and report_key in st.session_state:
     del st.session_state[report_key]
 
 detailed = report_mode == "Detailed"

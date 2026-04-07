@@ -218,10 +218,13 @@ class PhysicalDescription(Description):
                     elif z < -0.5:
                         concerns.append(f"He {phrase}.")
                 else:
+                    phrase = METRIC_PHRASES.get(friendly, {}).get(level)
+                    if not phrase:
+                        phrase = f"shows {level} {friendly}"
                     if z > 1.0:
-                        standouts.append(f"His {friendly} was {level}.")
+                        standouts.append(f"He {phrase}.")
                     elif z < -0.5:
-                        concerns.append(f"His {friendly} was {level}.")
+                        concerns.append(f"He {phrase}.")
 
         if standouts:
             description += "\n" + " ".join(standouts)
@@ -233,15 +236,18 @@ class PhysicalDescription(Description):
 
     def get_prompt_messages(self) -> List[Dict[str, str]]:
         prompt = (
-            "Please use the physical profile description enclosed with ``` to give a concise summary "
-            "of the player's physical profile, strengths and weaknesses. "
-            "Lead with the four qualities — Speed, Acceleration, Agility, and Endurance. "
-            "You may reference specific underlying metrics only when they are a clear standout or a clear concern — do not list them all. "
-            "The first sentence should give an overview of what kind of athlete this player is, mentioning the competition and team. "
-            "The second sentence should describe the player's physical strengths. "
-            "The third sentence should describe physical limitations or areas where the player is average or weak. "
-            "Finally, summarise what this physical profile means for the player overall. "
+            "Please use the physical profile description enclosed with ``` to write a single tactical interpretation "
+            "of the player's physical profile — one sentence, two at most. "
+            "This is not a breakdown of each quality. It is a summary that tells coaching staff what kind of athlete "
+            "this player is, where his physicality makes him dangerous, and where it limits him. "
+            "Weave strengths and weaknesses together into a cohesive picture rather than listing them separately. "
+            "Here is the tone and depth to aim for: "
+            "'this profile describes a player whose physical impact is concentrated in short, high-speed moments "
+            "rather than sustained output, making him a devastating threat in wide areas when space is available "
+            "but less suited to constant high-pressing or lengthy, volume-based running.' "
+            "Use natural, analyst-style language — say 'he is quick' not 'his speed is good'. "
+            "Never capitalise any word mid-sentence. "
             "Do not mention z-scores, percentile numbers, or ranks. "
-            "Write as a performance analyst would in a report to coaching staff."
+            "Do not start with the player's name — start with the interpretation."
         )
         return [{"role": "user", "content": prompt}]
