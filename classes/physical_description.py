@@ -22,11 +22,6 @@ def describe_level(z: float) -> str:
     return "poor"
 
 
-def _is_notable(z: float) -> bool:
-    """Return True if z-score is notably good or bad (outside ±0.5)."""
-    return abs(z) > 0.5
-
-
 def _raw_col_name(config_metric: str) -> str:
     """Strip the (INV) suffix used in config to get the actual CSV column name."""
     return config_metric.replace(" (INV)", "")
