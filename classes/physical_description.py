@@ -197,7 +197,7 @@ class PhysicalDescription(Description):
             level = describe_level(z)
             style = describe_style(attr, level)
             description += (
-                f"He {style} compared to other players in the same position group. "
+                f"The player {style} compared to other players in the same position group. "
             )
         description += "\n"
 
