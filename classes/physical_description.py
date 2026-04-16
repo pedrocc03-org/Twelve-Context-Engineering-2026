@@ -227,10 +227,10 @@ class PhysicalDescription(Description):
                         concerns.append(f"He {phrase}.")
 
         if standouts:
-            description += "\n" + " ".join(standouts)
+            description += "\nStrengths: " + " ".join(standouts)
 
         if concerns:
-            description += "\n" + " ".join(concerns)
+            description += "\nAreas of concern: " + " ".join(concerns)
 
         return description
 
