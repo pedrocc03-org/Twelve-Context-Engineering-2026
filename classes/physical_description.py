@@ -103,7 +103,51 @@ class PhysicalDescription(Description):
         self.position_df = position_df
         self.raw_position_df = raw_position_df
         self.detailed = detailed
+        self.attr_zscores = self._compute_attr_zscores()
+        self.metric_zscores = self._compute_metric_zscores()
         super().__init__()
+
+    def _compute_attr_zscores(self) -> dict:
+        p = self.player_row
+        pos_df = self.position_df
+        result = {}
+        for attr in ATTRIBUTES:
+            mean = pos_df[attr].mean()
+            std = pos_df[attr].std()
+            result[attr] = 0.0 if std == 0 else (p[attr] - mean) / std
+        return result
+
+    def _compute_metric_zscores(self) -> dict:
+        """Precompute z-scores for every raw metric for the selected player."""
+        p = self.player_row
+        raw_df = self.raw_position_df
+        raw_player_rows = raw_df[raw_df["Player"] == p["Player"]]
+        if raw_player_rows.empty:
+            return {}
+
+        raw_player = raw_player_rows.iloc[0]
+        result = {}
+
+        for attr in ATTRIBUTES:
+            for config_metric in ATTRIBUTE_INFO[attr]["metrics"]:
+                col = _raw_col_name(config_metric)
+                is_inverted = "(INV)" in config_metric
+                if col not in raw_df.columns:
+                    continue
+                val = raw_player[col]
+                if pd.isna(val):
+                    continue
+                col_data = raw_df[col].dropna()
+                z_arr = zscore(col_data.values, nan_policy="omit")
+                player_indices = raw_df.loc[raw_df["Player"] == p["Player"]].index
+                matching = [i for i in player_indices if i in col_data.index]
+                if not matching:
+                    continue
+                pos = list(col_data.index).index(matching[0])
+                z = float(z_arr[pos])
+                result[config_metric] = -z if is_inverted else z
+
+        return result
 
     def get_intro_messages(self) -> List[Dict[str, str]]:
         intro = [
@@ -145,7 +189,6 @@ class PhysicalDescription(Description):
 
     def _synthesize_text(self, detailed: bool = False) -> str:
         p = self.player_row
-        raw_df = self.raw_position_df
         n_peers = len(self.position_df)
 
         description = (
@@ -154,61 +197,29 @@ class PhysicalDescription(Description):
             f"All ratings are compared against {n_peers} {p['Position Group']} players.\n\n"
         )
 
-        # Compute z-scores for each attribute within position group
-        pos_df = self.position_df
         for attr in ATTRIBUTES:
-            attr_mean = pos_df[attr].mean()
-            attr_std = pos_df[attr].std()
-            if attr_std == 0:
-                z = 0.0
-            else:
-                z = (p[attr] - attr_mean) / attr_std
-
+            z = self.attr_zscores[attr]
             level = describe_level(z)
             style = describe_style(attr, level)
-
             description += (
                 f"He {style} compared to other players in the same position group. "
             )
         description += "\n"
 
-        # Find the player in the raw data for notable metric call-outs
-        raw_player = raw_df[raw_df["Player"] == p["Player"]]
-        if raw_player.empty:
+        if not self.metric_zscores:
             return description
-
-        raw_player = raw_player.iloc[0]
 
         # Only call out metrics that are outstanding/excellent or below average/poor
         standouts = []
         concerns = []
 
         for attr in ATTRIBUTES:
-            info = ATTRIBUTE_INFO[attr]
-            for config_metric, weight in info["metrics"].items():
+            for config_metric in ATTRIBUTE_INFO[attr]["metrics"]:
+                if config_metric not in self.metric_zscores:
+                    continue
+
+                z = self.metric_zscores[config_metric]
                 col = _raw_col_name(config_metric)
-                is_inverted = "(INV)" in config_metric
-
-                if col not in raw_df.columns:
-                    continue
-
-                val = raw_player[col]
-                if pd.isna(val):
-                    continue
-
-                col_data = raw_df[col].dropna()
-                z_arr = zscore(col_data.values, nan_policy="omit")
-                player_mask = raw_df["Player"] == p["Player"]
-                player_indices = raw_df.loc[player_mask].index
-                matching = [i for i in player_indices if i in col_data.index]
-                if not matching:
-                    continue
-
-                pos = list(col_data.index).index(matching[0])
-                z = float(z_arr[pos])
-                if is_inverted:
-                    z = -z
-
                 level = describe_level(z)
                 friendly = FRIENDLY_NAMES.get(col, col)
                 if detailed:
