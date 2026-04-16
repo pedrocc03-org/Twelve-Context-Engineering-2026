@@ -267,6 +267,8 @@ class PhysicalDescription(Description):
                 "The remaining sentences should reference the specific metric strengths and concerns listed under "
                 "'Strengths' and 'Areas of concern' in the profile, explaining in plain language what each means "
                 "for the player's physical capability. Cover both standout qualities and notable weaknesses. "
+                "Describe only what the player's body can or cannot do — never suggest what this means for pressing, "
+                "transitions, counter-attacks, tactical roles, or any on-pitch situation. "
                 + shared_rules
             )
         else:
