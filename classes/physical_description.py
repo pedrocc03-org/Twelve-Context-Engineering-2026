@@ -133,13 +133,13 @@ class PhysicalDescription(Description):
                 if pd.isna(val):
                     continue
                 col_data = raw_df[col].dropna()
-                z_arr = zscore(col_data.values, nan_policy="omit")
-                player_indices = raw_df.loc[raw_df["Player"] == p["Player"]].index
-                matching = [i for i in player_indices if i in col_data.index]
-                if not matching:
+                z_series = pd.Series(
+                    zscore(col_data.values, nan_policy="omit"), index=col_data.index
+                )
+                player_idx = raw_player.name
+                if player_idx not in z_series.index:
                     continue
-                pos = list(col_data.index).index(matching[0])
-                z = float(z_arr[pos])
+                z = float(z_series.loc[player_idx])
                 result[config_metric] = -z if is_inverted else z
 
         return result
