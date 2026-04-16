@@ -11,19 +11,51 @@ def z_score_color(z: float) -> str:
     return "#e05c5c"
 
 
-def player_header_html(player_row: pd.Series) -> str:
+def player_header_html(player_row: pd.Series, position_df: pd.DataFrame) -> str:
+    # Compute best attribute (highest z-score)
+    best_attr, best_z = None, -999.0
+    for attr in ATTRIBUTES:
+        mean = position_df[attr].mean()
+        std  = position_df[attr].std()
+        z    = (player_row[attr] - mean) / std if std > 0 else 0.0
+        if z > best_z:
+            best_z, best_attr = z, attr
+
+    best_color = z_score_color(best_z)
+    best_icon  = ATTRIBUTE_INFO[best_attr]["icon"] if best_attr else ""
+    best_badge = (
+        f'<div style="text-align:right;">'
+        f'<div style="font-size:10px;font-weight:700;color:#888;letter-spacing:1.5px;'
+        f'text-transform:uppercase;margin-bottom:4px;">Top Attribute</div>'
+        f'<div style="display:inline-flex;align-items:center;gap:6px;'
+        f'background:rgba(255,255,255,0.06);border:1px solid {best_color}44;'
+        f'border-radius:6px;padding:6px 14px;">'
+        f'<span style="font-size:18px;">{best_icon}</span>'
+        f'<span style="font-size:14px;font-weight:700;color:{best_color};">{best_attr}</span>'
+        f'<span style="font-size:15px;font-weight:700;color:{best_color};">{best_z:+.1f}</span>'
+        f'</div></div>'
+    ) if best_attr else ""
+
     return (
         '<div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);'
-        'border:1px solid rgba(0,180,120,0.3);border-radius:12px;padding:20px 28px;margin-bottom:8px;">'
-        '<div style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:0.3px;">'
+        'border:1px solid rgba(0,180,120,0.3);border-radius:12px;padding:22px 28px;margin-bottom:8px;'
+        'display:flex;justify-content:space-between;align-items:center;">'
+        '<div>'
+        '<div style="font-size:10px;font-weight:700;color:#009940;letter-spacing:2px;'
+        'text-transform:uppercase;margin-bottom:8px;">Player Profile</div>'
+        '<div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:0.3px;margin-bottom:8px;">'
         + player_row["Player"] +
-        '</div><div style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap;">'
+        '</div>'
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">'
         '<span style="color:#00b478;font-size:14px;font-weight:600;">' + player_row["Team"] + "</span>"
-        '<span style="color:#888;font-size:14px;">·</span>'
-        '<span style="color:#aaa;font-size:14px;">' + player_row["Position Group"] + "</span>"
-        '<span style="color:#888;font-size:14px;">·</span>'
-        '<span style="color:#aaa;font-size:14px;font-style:italic;">' + player_row["Competition"] + "</span>"
-        "</div></div>"
+        '<span style="color:#555;font-size:14px;">·</span>'
+        '<span style="color:#aaa;font-size:13px;">' + player_row["Position Group"] + "</span>"
+        '<span style="color:#555;font-size:14px;">·</span>'
+        '<span style="color:#888;font-size:13px;font-style:italic;">' + player_row["Competition"] + "</span>"
+        "</div>"
+        "</div>"
+        + best_badge +
+        "</div>"
     )
 
 

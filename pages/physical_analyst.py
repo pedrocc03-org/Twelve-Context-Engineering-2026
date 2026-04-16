@@ -9,6 +9,20 @@ from classes.physical_description import PhysicalDescription
 
 add_common_page_elements()
 
+# Wider layout override for this page
+st.markdown(
+    """
+    <style>
+    section[tabindex="0"] > div[data-testid="stAppViewBlockContainer"] {
+        max-width: 1600px !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.divider()
 
 df = load_data()
@@ -16,27 +30,50 @@ df = load_data()
 if "glossary_open" not in st.session_state:
     st.session_state.glossary_open = False
 
-# Title + glossary toggle
-col_title, col_btn = st.columns([5, 1])
-with col_title:
+# ── Page header ────────────────────────────────────────────────────────────────
+col_header, col_btn = st.columns([6, 1], vertical_alignment="center")
+
+with col_header:
     st.markdown(
-        "<h2 style='margin-bottom:2px;'>Physical Analyst</h2>"
-        "<p style='color:#888;margin-top:0;font-size:14px;'>"
-        "Speed &nbsp;&middot;&nbsp; Acceleration"
-        " &nbsp;&middot;&nbsp; Agility &nbsp;&middot;&nbsp; Endurance</p>",
+        """
+        <div style="border-left:4px solid #009940;padding:10px 18px;">
+          <div style="
+            display:inline-block;
+            font-size:10px;font-weight:700;color:#009940;
+            letter-spacing:2.5px;text-transform:uppercase;
+            background:#e8f7ee;border:1px solid #b3dfc3;
+            border-radius:4px;padding:2px 8px;margin-bottom:8px;
+          ">Physical Analysis &nbsp;·&nbsp; SkillCorner</div>
+          <div style="font-size:30px;font-weight:800;color:#111;line-height:1.1;margin-bottom:4px;">
+            Physical Analyst
+          </div>
+          <div style="font-size:13px;color:#888;">
+            Speed &nbsp;&middot;&nbsp; Acceleration &nbsp;&middot;&nbsp;
+            Agility &nbsp;&middot;&nbsp; Endurance
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+
 with col_btn:
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     label = "✕ Close" if st.session_state.glossary_open else "ℹ Glossary"
     if st.button(label, use_container_width=True):
         st.session_state.glossary_open = not st.session_state.glossary_open
 
 if st.session_state.glossary_open:
     st.markdown(glossary_html(), unsafe_allow_html=True)
-    st.divider()
 
-# Filters
+st.divider()
+
+# ── Filters ────────────────────────────────────────────────────────────────────
+st.markdown(
+    "<div style='font-size:11px;font-weight:700;color:#009940;"
+    "letter-spacing:1.8px;text-transform:uppercase;margin-bottom:6px;'>"
+    "Select Player</div>",
+    unsafe_allow_html=True,
+)
+
 f1, f2, f3 = st.columns([2, 2, 3])
 with f1:
     competitions = ["All Competitions"] + sorted(df["Competition"].unique().tolist())
@@ -64,9 +101,11 @@ _comp_label = competition if competition != "All Competitions" else "all competi
 _pos_label = position if position != "All Positions" else "all positions"
 
 st.divider()
-st.markdown(player_header_html(player_row), unsafe_allow_html=True)
 
-# Tabs
+# ── Player identity card ───────────────────────────────────────────────────────
+st.markdown(player_header_html(player_row, position_df), unsafe_allow_html=True)
+
+# ── Analysis tabs ──────────────────────────────────────────────────────────────
 tab_overview, tab_scout, tab_rankings = st.tabs([
     "Overview", "Scout View", "Position Group Rankings"
 ])
@@ -128,12 +167,18 @@ with tab_rankings:
     )
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
-# Physical Report — full width at the bottom
+# ── Physical Report ────────────────────────────────────────────────────────────
 st.divider()
 
 col_report_title, col_report_mode, col_regen = st.columns([2, 2, 2], vertical_alignment="center")
 with col_report_title:
-    st.markdown("<h3 style='margin:0;'>Physical Report</h3>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:11px;font-weight:700;color:#009940;"
+        "letter-spacing:1.8px;text-transform:uppercase;margin-bottom:4px;'>"
+        "AI Report</div>"
+        "<div style='font-size:20px;font-weight:700;color:#111;'>Physical Report</div>",
+        unsafe_allow_html=True,
+    )
 with col_report_mode:
     report_mode = st.radio("Mode", ["Basic", "Detailed"], index=0, horizontal=True, label_visibility="collapsed")
 with col_regen:
