@@ -220,23 +220,23 @@ class PhysicalDescription(Description):
                 if detailed:
                     phrase = METRIC_PHRASES.get(friendly, {}).get(level) or describe_style(attr, level)
                     if z > 1.0:
-                        standouts.append(f"He {phrase}.")
+                        standouts.append(phrase.capitalize() + ".")
                     elif z < -0.5:
-                        concerns.append(f"He {phrase}.")
+                        concerns.append(phrase.capitalize() + ".")
                 else:
                     phrase = METRIC_PHRASES.get(friendly, {}).get(level)
                     if not phrase:
                         phrase = f"shows {level} {friendly}"
                     if z > 1.0:
-                        standouts.append(f"He {phrase}.")
+                        standouts.append(phrase.capitalize() + ".")
                     elif z < -0.5:
-                        concerns.append(f"He {phrase}.")
+                        concerns.append(phrase.capitalize() + ".")
 
         if standouts:
-            description += "\nStrengths: " + " ".join(standouts)
+            description += "\nStrengths:\n" + "\n".join(f"- {s}" for s in standouts)
 
         if concerns:
-            description += "\nAreas of concern: " + " ".join(concerns)
+            description += "\nAreas of concern:\n" + "\n".join(f"- {c}" for c in concerns)
 
         return description
 
