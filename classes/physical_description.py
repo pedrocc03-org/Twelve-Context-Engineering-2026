@@ -1,3 +1,4 @@
+import random
 from typing import List, Dict
 
 import pandas as pd
@@ -29,50 +30,46 @@ def _raw_col_name(config_metric: str) -> str:
 
 STYLE_TEMPLATES = {
     "Speed": {
-        "outstanding": ["boasts elite top speed", "maximal sprint pace is exceptional"],
-        "excellent": ["runs very fast", "top speed is high"],
-        "good": ["above-average speed", "speeds ahead of many peers"],
-        "average": ["speed is average", "acceleration is typical"],
-        "below average": ["slower than many peers", "speed is a little under average"],
-        "poor": ["struggles to reach high speed", "speed is weak"],
+        "outstanding": ["boasts elite top speed", "maximal sprint pace is exceptional", "has top-end pace that few peers can match"],
+        "excellent": ["runs very fast", "top speed is high", "has strong pace over distance"],
+        "good": ["above-average speed", "speeds ahead of many peers", "has a useful edge in top-end pace"],
+        "average": ["speed is average", "pace is typical for the position", "sits around the middle of the pack for speed"],
+        "below average": ["slower than many peers", "speed is a little under average", "lacks the pace of most positional peers"],
+        "poor": ["struggles to reach high speed", "speed is weak", "has notably low top-end pace"],
     },
     "Acceleration": {
-        "outstanding": ["accelerates like a shot", "burst acceleration is explosive"],
-        "excellent": ["accelerates really fast", "acceleration bursts are powerful"],
-        "good": ["has very strong acceleration", "fast starting speed"],
-        "average": ["acceleration is competent", "acceleration is reasonable"],
-        "below average": ["acceleration is sluggish", "takes time to reach speed"],
-        "poor": ["struggles to accelerate", "acceleration is weak"],
+        "outstanding": ["accelerates like a shot", "burst acceleration is explosive", "gets to speed almost instantly"],
+        "excellent": ["accelerates really fast", "acceleration bursts are powerful", "reaches speed quickly and sharply"],
+        "good": ["has very strong acceleration", "fast starting speed", "gets up to pace well"],
+        "average": ["acceleration is competent", "acceleration is reasonable", "reaches speed at a typical rate"],
+        "below average": ["acceleration is sluggish", "takes time to reach speed", "is slow to get up to pace"],
+        "poor": ["struggles to accelerate", "acceleration is weak", "takes significantly longer than peers to reach speed"],
     },
     "Agility": {
-        "outstanding": ["turns and changes direction brilliantly", "agility is elite"],
-        "excellent": ["very agile", "sharp and responsive changes of direction"],
-        "good": ["above-average agility", "quick with direction changes"],
-        "average": ["adequate agility", "moves with standard agility"],
-        "below average": ["lacks quickness in tight turns", "agility can be improved"],
-        "poor": ["slow to change direction", "agility is poor"],
+        "outstanding": ["turns and changes direction brilliantly", "agility is elite", "is exceptionally sharp through direction changes"],
+        "excellent": ["very agile", "sharp and responsive changes of direction", "executes turns with real quality"],
+        "good": ["above-average agility", "quick with direction changes", "handles direction changes well"],
+        "average": ["adequate agility", "moves with standard agility", "changes direction at a typical rate"],
+        "below average": ["lacks quickness in tight turns", "agility can be improved", "is a little stiff through direction changes"],
+        "poor": ["slow to change direction", "agility is poor", "struggles to turn and adjust quickly"],
     },
     "Endurance": {
-        "outstanding": ["maintains peak output all game", "elite stamina"],
-        "excellent": ["strong endurance", "rarely fatigues"],
-        "good": ["good stamina", "maintains pace well"],
-        "average": ["average endurance", "sufficient match fitness"],
-        "below average": ["tends to tire sooner than most", "stamina is a weak point"],
-        "poor": ["struggles with longer minutes", "endurance is poor"],
+        "outstanding": ["maintains peak output all game", "elite stamina", "covers an exceptional amount of ground across a full match"],
+        "excellent": ["strong endurance", "rarely fatigues", "sustains high physical output throughout matches"],
+        "good": ["good stamina", "maintains pace well", "keeps up a solid work rate over 90 minutes"],
+        "average": ["average endurance", "sufficient match fitness", "covers a typical amount of ground for the position"],
+        "below average": ["tends to tire sooner than most", "stamina is a weak point", "physical output drops off compared to peers"],
+        "poor": ["struggles with longer minutes", "endurance is poor", "covers noticeably less ground than most peers"],
     },
 }
 
 
 def describe_style(attr: str, level: str) -> str:
-    """Pick a phrasing variant for the attribute + level.
-
-    This is the wordalisation style mapping layer. It keeps the label logic
-    in `describe_level` but provides more natural variation for output sentences.
-    """
+    """Pick a random phrasing variant for the attribute + level."""
     options = STYLE_TEMPLATES.get(attr, {}).get(level)
     if not options:
         return f"is {level} in {attr.lower()}"
-    return options[0]
+    return random.choice(options)
 
 
 
