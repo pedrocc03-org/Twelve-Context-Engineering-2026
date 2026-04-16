@@ -241,13 +241,7 @@ class PhysicalDescription(Description):
         return description
 
     def get_prompt_messages(self) -> List[Dict[str, str]]:
-        prompt = (
-            "Please use the physical profile description enclosed with ``` to write a short, plain summary "
-            "of the player's physical profile. Two sentences maximum. "
-            "The first sentence should describe what type of physical profile this is — e.g. "
-            "'a relentless, non-explosive forward who covers large distances and changes direction a lot "
-            "but has average top speed and is slow to accelerate.' "
-            "If needed, a second sentence can add what this physically allows or limits. "
+        shared_rules = (
             "Critical rules: "
             "- Write in short, simple clauses. Do not stack multiple qualifiers into one clause. "
             "  Bad: 'combining average top speed and sluggish acceleration with strong endurance'. "
@@ -264,4 +258,26 @@ class PhysicalDescription(Description):
             "- Do not mention z-scores, percentile numbers, or ranks. "
             "- Do not start with the player's name — start with the profile description."
         )
+
+        if self.detailed:
+            prompt = (
+                "Please use the physical profile description enclosed with ``` to write a detailed physical report "
+                "of three to four sentences. "
+                "The first sentence should characterise the overall physical profile — what kind of athlete this is. "
+                "The remaining sentences should reference the specific metric strengths and concerns listed under "
+                "'Strengths' and 'Areas of concern' in the profile, explaining in plain language what each means "
+                "for the player's physical capability. Cover both standout qualities and notable weaknesses. "
+                + shared_rules
+            )
+        else:
+            prompt = (
+                "Please use the physical profile description enclosed with ``` to write a short, plain summary "
+                "of the player's physical profile. Two sentences maximum. "
+                "The first sentence should describe what type of physical profile this is — e.g. "
+                "'a relentless, non-explosive forward who covers large distances and changes direction a lot "
+                "but has average top speed and is slow to accelerate.' "
+                "If needed, a second sentence can add what this physically allows or limits. "
+                + shared_rules
+            )
+
         return [{"role": "user", "content": prompt}]
