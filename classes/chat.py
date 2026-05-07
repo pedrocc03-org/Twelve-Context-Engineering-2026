@@ -490,3 +490,80 @@ class PersonChat(Chat):
                 )
 
             self.handle_input(x, stream=True)
+
+
+class PhysicalChat(Chat):
+    def __init__(
+        self,
+        chat_state_hash,
+        player_row,
+        position_df,
+        raw_position_df,
+        detailed=False,
+        state="empty",
+    ):
+        self.player_row = player_row
+        self.position_df = position_df
+        self.raw_position_df = raw_position_df
+        self.detailed = detailed
+        super().__init__(chat_state_hash, state=state)
+        self.name = self.player_row["Player"]
+
+    def get_input(self):
+        """
+        Get input from streamlit.
+        """
+        if x := st.chat_input(
+            placeholder=f"What else would you like to know about {self.player_row['Player']}?"
+        ):
+            if len(x) > 500:
+                st.error(
+                    f"Your message is too long ({len(x)} characters). Please keep it under 500 characters."
+                )
+
+            self.handle_input(x, stream=True)
+
+    def instruction_messages(self):
+        """
+        Instruction for the agent.
+        """
+        mode_text = "detailed" if self.detailed else "basic"
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "You are a UK-based physical performance analyst working in elite football. "
+                    "You explain player physical data clearly and directly in British English. "
+                    "Only use the physical information provided to you."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "After these messages you will be interacting with a user of a football physical analysis platform. "
+                    f"The user has selected the player {self.player_row['Player']}, and the conversation will be about their physical profile. "
+                    f"The current report mode is {mode_text}. "
+                    "All user messages will be prefixed with 'User:' and enclosed with ```. "
+                    "When responding to the user, speak directly to them. "
+                    "Keep answers to 2 or 3 short sentences. "
+                    "Do not deviate from the physical information provided and do not invent tactical or technical claims."
+                ),
+            },
+        ]
+
+    def get_relevant_info(self, query):
+        description = PhysicalDescription(
+            self.player_row,
+            self.position_df,
+            self.raw_position_df,
+            detailed=self.detailed,
+        )
+
+        ret_val = "Here is a description of the player in terms of physical data:\n\n"
+        ret_val += description.synthesize_text()
+        ret_val += (
+            "\n\nIf the user's question goes beyond this physical report, remind them that "
+            "this chat can answer questions about the selected player's speed, acceleration, agility, endurance, "
+            "and the supporting raw physical metrics shown on the page."
+        )
+        return ret_val
