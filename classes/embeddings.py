@@ -1,5 +1,7 @@
 import pandas as pd
 from utils.embeddings_utils import get_embedding, cosine_similarity
+import re
+from functools import lru_cache
 
 from settings import (
     GPT_EMBEDDINGS_MODEL,
@@ -7,6 +9,7 @@ from settings import (
     GEMINI_EMBEDDING_MODEL,
     GEMINI_API_KEY,
 )
+from pages.physical.config import ATTRIBUTE_INFO, FRIENDLY_NAMES
 
 
 class Embeddings:
@@ -141,3 +144,80 @@ class PersonEmbeddings(Embeddings):
             df_embeddings = pd.concat([df_embeddings, df_temp], ignore_index=True)
 
         return df_embeddings
+
+
+def _normalize_tokens(text):
+    return set(re.findall(r"[a-z0-9]+", str(text).lower()))
+
+
+class PhysicalEmbeddings(Embeddings):
+    def __init__(self):
+        self.df_dict = PhysicalEmbeddings.get_embeddings()
+
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def get_embeddings():
+        docs = []
+
+        describe_df = pd.read_excel("data/describe/Physical.xlsx")
+        for _, row in describe_df.iterrows():
+            docs.append(
+                {
+                    "user": row["user"],
+                    "assistant": row["assistant"],
+                    "category": "metric_definition",
+                    "format": "qa",
+                }
+            )
+
+        for attr, info in ATTRIBUTE_INFO.items():
+            docs.append(
+                {
+                    "user": f"What does {attr.lower()} mean in the physical analyst?",
+                    "assistant": info["definition"],
+                    "category": "attribute_definition",
+                    "format": "attribute",
+                }
+            )
+
+            for metric in info["metrics"]:
+                raw_metric = metric.replace(" (INV)", "")
+                friendly = FRIENDLY_NAMES.get(raw_metric, raw_metric)
+                docs.append(
+                    {
+                        "user": f"What does {friendly} mean?",
+                        "assistant": (
+                            f"{friendly.capitalize()} sits under {attr.lower()} in the physical analyst. "
+                            f"Underlying metric: {raw_metric}."
+                        ),
+                        "category": attr.lower(),
+                        "format": "metric_alias",
+                    }
+                )
+
+        df = pd.DataFrame(docs).drop_duplicates(subset=["user", "assistant"]).reset_index(drop=True)
+        df["tokens"] = (
+            df["user"].fillna("").astype(str) + " " + df["assistant"].fillna("").astype(str)
+        ).apply(_normalize_tokens)
+        return df
+
+    def search(self, query, top_n=5):
+        query_tokens = _normalize_tokens(query)
+        if not query_tokens:
+            return self.df_dict.head(0).copy()
+
+        df = self.df_dict.copy()
+
+        def score_row(row):
+            overlap = len(query_tokens & row["tokens"])
+            if overlap == 0:
+                return 0.0
+
+            coverage = overlap / len(query_tokens)
+            query_text = str(query).lower()
+            user_text = str(row["user"]).lower()
+            phrase_bonus = 0.2 if user_text in query_text or query_text in user_text else 0.0
+            return coverage + phrase_bonus
+
+        df["similarities"] = df.apply(score_row, axis=1)
+        return df[df["similarities"] > 0].sort_values("similarities", ascending=False).head(top_n)

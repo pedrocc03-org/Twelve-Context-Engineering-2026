@@ -84,41 +84,39 @@ selected_view = st.radio(
 
 st.divider()
 
-# ── Filters ────────────────────────────────────────────────────────────────────
-st.markdown(
-    "<div style='font-size:11px;font-weight:700;color:#009940;"
-    "letter-spacing:1.8px;text-transform:uppercase;margin-bottom:6px;'>"
-    "Select Player</div>",
-    unsafe_allow_html=True,
-)
-
-f1, f2, f3 = st.columns([2, 2, 3])
-with f1:
-    competitions = ["All Competitions"] + sorted(df["Competition"].unique().tolist())
-    competition  = st.selectbox("Competition", competitions)
-with f2:
-    position_options = ["All Positions"] + sorted(df["Position Group"].unique().tolist())
-    position         = st.selectbox("Position Group", position_options)
-
-filtered = filter_players(df, competition, position)
-if filtered.empty:
-    st.warning("No players match the selected filters.")
-    st.stop()
-
-with f3:
-    selected_name = st.selectbox("Player", sorted(filtered["Player"].unique().tolist()))
-
-player_row  = filtered[filtered["Player"] == selected_name].iloc[0]
-position_df = filtered.reset_index(drop=True)
-
-# Load raw SkillCorner data and apply the same filters
 raw_df = load_raw_data()
-raw_position_df = filter_players(raw_df, competition, position).reset_index(drop=True)
-
-_comp_label = competition if competition != "All Competitions" else "all competitions"
-_pos_label = position if position != "All Positions" else "all positions"
 
 if selected_view == "Player Profile":
+    # ── Filters ────────────────────────────────────────────────────────────────
+    st.markdown(
+        "<div style='font-size:11px;font-weight:700;color:#009940;"
+        "letter-spacing:1.8px;text-transform:uppercase;margin-bottom:6px;'>"
+        "Select Player</div>",
+        unsafe_allow_html=True,
+    )
+
+    f1, f2, f3 = st.columns([2, 2, 3])
+    with f1:
+        competitions = ["All Competitions"] + sorted(df["Competition"].unique().tolist())
+        competition = st.selectbox("Competition", competitions)
+    with f2:
+        position_options = ["All Positions"] + sorted(df["Position Group"].unique().tolist())
+        position = st.selectbox("Position Group", position_options)
+
+    filtered = filter_players(df, competition, position)
+    if filtered.empty:
+        st.warning("No players match the selected filters.")
+        st.stop()
+
+    with f3:
+        selected_name = st.selectbox("Player", sorted(filtered["Player"].unique().tolist()))
+
+    player_row = filtered[filtered["Player"] == selected_name].iloc[0]
+    position_df = filtered.reset_index(drop=True)
+    raw_position_df = filter_players(raw_df, competition, position).reset_index(drop=True)
+    _comp_label = competition if competition != "All Competitions" else "all competitions"
+    _pos_label = position if position != "All Positions" else "all positions"
+
     st.divider()
 
     # ── Player identity card ───────────────────────────────────────────────────
@@ -256,25 +254,25 @@ else:
         st.session_state.physical_chat_nonce += 1
 
     to_hash = (
-        selected_name,
-        competition,
-        position,
         st.session_state.physical_chat_nonce,
         "physical_analyst",
+        "chat_full_view",
     )
 
     chat = create_chat(
         to_hash,
         PhysicalChat,
-        player_row,
-        position_df,
-        raw_position_df,
+        None,
+        None,
+        None,
+        all_players_df=df,
+        all_raw_df=raw_df,
         detailed=False,
     )
 
     if chat.state == "empty":
         chat.add_message(
-            "Hello. Ask about speed, acceleration, agility, endurance, or any of the raw physical metrics."
+            "Hello. Ask about a player, a physical metric, or what is and is not in scope for this analyst."
         )
         chat.state = "default"
 
