@@ -5,6 +5,7 @@ from types import GeneratorType
 import pandas as pd
 import json
 import re
+import unicodedata
 
 from settings import USE_GEMINI, USE_LM_STUDIO
 
@@ -500,6 +501,14 @@ class PersonChat(Chat):
 
 
 class PhysicalChat(Chat):
+    QUERY_ROUTE_PHYSICAL_ONLY = "physical_only"
+    QUERY_ROUTE_MIXED = "mixed"
+    QUERY_ROUTE_NON_PHYSICAL = "non_physical"
+    QUERY_ROUTE_UNCLEAR = "unclear"
+    PLAYER_RESOLUTION_NONE = "none"
+    PLAYER_RESOLUTION_RESOLVED = "resolved"
+    PLAYER_RESOLUTION_AMBIGUOUS = "ambiguous"
+
     IN_SCOPE_KEYWORDS = {
         "physical",
         "speed",
@@ -622,6 +631,8 @@ class PhysicalChat(Chat):
         self.all_players_df = all_players_df if all_players_df is not None else position_df
         self.all_raw_df = all_raw_df if all_raw_df is not None else raw_position_df
         self.detailed = detailed
+        self.pending_player_matches = []
+        self.player_resolution_status = self.PLAYER_RESOLUTION_NONE
         super().__init__(chat_state_hash, state=state)
         self.name = self.player_row["Player"] if self.player_row is not None else "physical analyst"
 
@@ -657,7 +668,10 @@ class PhysicalChat(Chat):
                     "If a question is out of scope, use this pattern: acknowledge briefly, state the limit directly, "
                     "and redirect to the nearest physical angle. "
                     "If a question mixes in-scope and out-of-scope parts, answer only the physical part and clearly mark the rest as outside scope. "
-                    "Never infer tactics, technique, mentality, or team fit from physical data."
+                    "Never infer tactics, technique, mentality, or team fit from physical data. "
+                    "Allowed answer types only: metric definition, attribute definition, player physical summary, "
+                    "player-to-player physical comparison, clarification request, or scope refusal. "
+                    "Do not answer with tactical advice, technical scouting, mental assessment, role fit, or general football opinion."
                 ),
             },
             {
@@ -670,7 +684,8 @@ class PhysicalChat(Chat):
                     "All user messages will be prefixed with 'User:' and enclosed with ```. "
                     "When responding to the user, speak directly to them. "
                     "Keep answers to 2 to 4 short sentences. "
-                    "Do not deviate from the physical information provided."
+                    "Do not deviate from the physical information provided. "
+                    "If the available evidence does not support a safe physical-only answer, ask a short clarification question instead."
                 ),
             },
         ]
@@ -679,20 +694,38 @@ class PhysicalChat(Chat):
         if self.all_players_df is None:
             return None
 
-        query_text = str(query).lower()
-        candidates = []
-        for _, row in self.all_players_df.iterrows():
-            player_name = str(row["Player"])
-            short_name = str(row.get("Short Name", ""))
-            for candidate in {player_name, short_name}:
-                candidate = candidate.strip()
-                if candidate and candidate.lower() in query_text:
-                    candidates.append((len(candidate), row))
+        query_text = self.normalize_player_text(query)
+        query_tokens = self.player_tokens(query)
+        matches = []
 
-        if not candidates:
+        for _, row in self.all_players_df.iterrows():
+            match_score = self.score_player_match(row, query_text, query_tokens)
+            if match_score is None:
+                continue
+
+            matches.append((match_score, row))
+
+        if not matches:
+            self.pending_player_matches = []
+            self.player_resolution_status = self.PLAYER_RESOLUTION_NONE
             return None
 
-        _, player_row = max(candidates, key=lambda item: item[0])
+        matches.sort(
+            key=lambda item: (
+                item[0],
+                str(item[1].get("Player", "")),
+                str(item[1].get("Team", "")),
+            ),
+            reverse=True,
+        )
+        self.pending_player_matches = matches[:3]
+
+        if self.is_ambiguous_player_match(matches):
+            self.player_resolution_status = self.PLAYER_RESOLUTION_AMBIGUOUS
+            return None
+
+        _, player_row = matches[0]
+        self.player_resolution_status = self.PLAYER_RESOLUTION_RESOLVED
         position_df = self.all_players_df[
             self.all_players_df["Position Group"] == player_row["Position Group"]
         ].reset_index(drop=True)
@@ -701,12 +734,83 @@ class PhysicalChat(Chat):
         ].reset_index(drop=True)
         return player_row, position_df, raw_position_df
 
+    @staticmethod
+    def normalize_player_text(text):
+        text = str(text).strip().lower()
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(char for char in text if not unicodedata.combining(char))
+        text = re.sub(r"[^a-z0-9]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def player_tokens(self, text):
+        normalized = self.normalize_player_text(text)
+        return {token for token in normalized.split() if len(token) > 1}
+
+    def player_aliases(self, row):
+        aliases = set()
+        raw_names = [
+            row.get("Player", ""),
+            row.get("Short Name", ""),
+        ]
+
+        for raw_name in raw_names:
+            normalized = self.normalize_player_text(raw_name)
+            if not normalized:
+                continue
+
+            aliases.add(normalized)
+            parts = normalized.split()
+            if len(parts) >= 2:
+                aliases.add(parts[-1])
+                aliases.add(" ".join(parts[-2:]))
+                aliases.add(f"{parts[0]} {parts[-1]}")
+
+            if parts:
+                initials = " ".join(part[0] for part in parts[:-1] if part)
+                if initials:
+                    aliases.add(f"{initials} {parts[-1]}")
+
+        return {alias for alias in aliases if alias}
+
+    def score_player_match(self, row, query_text, query_tokens):
+        best_score = None
+
+        for alias in self.player_aliases(row):
+            alias_tokens = alias.split()
+            if not alias_tokens:
+                continue
+
+            alias_pattern = r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])"
+            if re.search(alias_pattern, query_text):
+                score = (4, len(alias_tokens), len(alias))
+            elif len(alias_tokens) >= 2 and all(token in query_tokens for token in alias_tokens):
+                score = (3, len(alias_tokens), len(alias))
+            elif len(alias_tokens) == 1 and len(alias_tokens[0]) >= 4 and alias_tokens[0] in query_tokens:
+                score = (2, len(alias_tokens), len(alias))
+            else:
+                continue
+
+            if best_score is None or score > best_score:
+                best_score = score
+
+        return best_score
+
     def maybe_update_player_context(self, query):
         resolved = self.resolve_player_context(query)
         if resolved is not None:
             self.player_row, self.position_df, self.raw_position_df = resolved
             self.name = self.player_row["Player"]
+        else:
+            self.name = self.player_row["Player"] if self.player_row is not None else "physical analyst"
         return resolved
+
+    def is_ambiguous_player_match(self, matches):
+        if len(matches) < 2:
+            return False
+
+        top_score = matches[0][0]
+        second_score = matches[1][0]
+        return top_score == second_score
 
     def needs_named_player(self, query):
         query_text = str(query).lower()
@@ -729,47 +833,84 @@ class PhysicalChat(Chat):
             "Name a player if you want a player-specific physical profile, or ask a general question about the physical metrics."
         )
 
-    def get_relevant_info(self, query):
-        self.maybe_update_player_context(query)
-        scope = self.classify_scope(query)
-        retrieved = self.embeddings.search(query, top_n=5)
+    def build_ambiguous_player_response(self):
+        if not self.pending_player_matches:
+            return self.build_missing_player_response()
 
-        ret_val = ""
-        if self.player_row is not None:
-            description = PhysicalDescription(
-                self.player_row,
-                self.position_df,
-                self.raw_position_df,
-                detailed=self.detailed,
-            )
-            ret_val += "Here is a description of the player in terms of physical data:\n\n"
-            ret_val += description.synthesize_text()
-            ret_val += "\n\nActive player context:\n"
-            ret_val += f"- Player: {self.player_row['Player']}\n"
-            ret_val += f"- Position group peer set: {self.player_row['Position Group']}\n"
-        else:
-            ret_val += "No player is currently selected in the chat context.\n"
+        options = []
+        for _, row in self.pending_player_matches[:3]:
+            player = str(row.get("Player", "")).strip()
+            team = str(row.get("Team", "")).strip()
+            competition = str(row.get("Competition", "")).strip()
+            details = ", ".join(part for part in [team, competition] if part)
+            options.append(f"{player} ({details})" if details else player)
 
-        ret_val += "\n\nScope rules for this chat:\n"
-        ret_val += "- In scope: speed, acceleration, top speed, sprinting, agility, endurance, distance, intensity, and raw tracking metrics.\n"
-        ret_val += "- Out of scope: tactical, technical, mental, and team-context questions.\n"
-        if scope["matched_categories"]:
-            ret_val += (
-                f"- This query includes out-of-scope signals in: {', '.join(scope['matched_categories'])}. "
-                "If needed, refuse that part and redirect to the nearest physical angle.\n"
-            )
-
-        if not retrieved.empty:
-            ret_val += "\nRetrieved physical knowledge for this question:\n"
-            for _, row in retrieved.iterrows():
-                ret_val += f"- Q: {row['user']}\n  A: {row['assistant']}\n"
-
-        ret_val += (
-            "\n\nIf the user's question goes beyond this physical report, remind them that "
-            "this chat can answer questions about the selected player's speed, acceleration, agility, endurance, "
-            "and the supporting raw physical metrics shown on the page."
+        return (
+            "I can see more than one player matching that name. "
+            f"Please specify which one you mean: {'; '.join(options)}."
         )
-        return ret_val
+
+    def build_active_player_context(self):
+        if self.player_row is None:
+            return "No player is currently selected in the chat context."
+
+        description = PhysicalDescription(
+            self.player_row,
+            self.position_df,
+            self.raw_position_df,
+            detailed=self.detailed,
+        )
+        return (
+            "Active player context:\n"
+            f"- Player: {self.player_row['Player']}\n"
+            f"- Position group peer set: {self.player_row['Position Group']}\n\n"
+            "Physical profile summary:\n"
+            f"{description.synthesize_text()}"
+        )
+
+    def build_scope_context(self, scope):
+        context = (
+            "Scope rules:\n"
+            "- In scope: speed, acceleration, top speed, sprinting, agility, endurance, distance, intensity, and raw tracking metrics.\n"
+            "- Out of scope: tactical, technical, mental, and team-context questions.\n"
+            "- Use only physical tracking data in the answer.\n"
+        )
+        if scope["matched_categories"]:
+            context += (
+                f"- This query also contains out-of-scope signals in: {', '.join(scope['matched_categories'])}.\n"
+            )
+        return context
+
+    def infer_answer_type(self, query):
+        query_text = self.normalize_player_text(query)
+        if any(phrase in query_text for phrase in ("what does", "define", "explain", "mean")):
+            return "definition"
+        if "compare" in query_text or "vs" in query_text or "versus" in query_text:
+            return "comparison"
+        if self.player_row is not None:
+            return "player_summary"
+        return "generic_physical"
+
+    def build_answer_contract_context(self, query):
+        answer_type = self.infer_answer_type(query)
+        return (
+            "Answer contract:\n"
+            f"- Expected answer type: {answer_type}\n"
+            "- Allowed outputs: metric definition, attribute definition, player physical summary, player-to-player physical comparison, clarification request, or scope refusal.\n"
+            "- Forbidden outputs: tactics, role fit, technical quality, mentality, team fit, manager fit, or general football opinion.\n"
+            "- If uncertain, ask for clarification instead of inferring beyond the physical data."
+        )
+
+    def build_retrieved_evidence(self, query):
+        retrieved = self.embeddings.search(query, top_n=5)
+        if retrieved.empty:
+            return "Retrieved physical evidence:\n- No additional retrieved physical evidence."
+
+        evidence_lines = ["Retrieved physical evidence:"]
+        for idx, (_, row) in enumerate(retrieved.iterrows(), start=1):
+            evidence_lines.append(f"[{idx}] User question: {row['user']}")
+            evidence_lines.append(f"[{idx}] Physical answer: {row['assistant']}")
+        return "\n".join(evidence_lines)
 
     def classify_scope(self, query):
         tokens = set(re.findall(r"[a-z0-9]+", str(query).lower()))
@@ -785,6 +926,74 @@ class PhysicalChat(Chat):
             "in_scope_hits": sorted(in_scope_hits),
             "should_refuse": should_refuse,
         }
+
+    def route_query(self, query):
+        scope = self.classify_scope(query)
+        query_text = str(query).strip()
+        if not query_text:
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": query_text,
+                "scope": scope,
+            }
+
+        if scope["in_scope_hits"] and not scope["matched_categories"]:
+            return {
+                "route": self.QUERY_ROUTE_PHYSICAL_ONLY,
+                "query": query_text,
+                "scope": scope,
+            }
+
+        if scope["matched_categories"] and not scope["in_scope_hits"]:
+            return {
+                "route": self.QUERY_ROUTE_NON_PHYSICAL,
+                "query": query_text,
+                "scope": scope,
+            }
+
+        if scope["matched_categories"] and scope["in_scope_hits"]:
+            physical_query = self.extract_physical_subquery(query_text)
+            if physical_query:
+                return {
+                    "route": self.QUERY_ROUTE_MIXED,
+                    "query": physical_query,
+                    "scope": scope,
+                }
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": query_text,
+                "scope": scope,
+            }
+
+        return {
+            "route": self.QUERY_ROUTE_UNCLEAR,
+            "query": query_text,
+            "scope": scope,
+        }
+
+    def extract_physical_subquery(self, query):
+        cleaned = re.sub(r"\s+", " ", str(query)).strip()
+        if not cleaned:
+            return None
+
+        segments = [
+            segment.strip(" ,.")
+            for segment in re.split(r"\bbut\b|\band\b|[?.!;]", cleaned, flags=re.IGNORECASE)
+            if segment.strip(" ,.")
+        ]
+        if not segments:
+            segments = [cleaned]
+
+        physical_segments = []
+        for segment in segments:
+            segment_scope = self.classify_scope(segment)
+            if segment_scope["in_scope_hits"]:
+                physical_segments.append(segment)
+
+        if not physical_segments:
+            return None
+
+        return ". ".join(dict.fromkeys(physical_segments))
 
     def build_refusal_response(self, scope):
         category = scope["matched_categories"][0]
@@ -816,16 +1025,73 @@ class PhysicalChat(Chat):
             f"{redirect_map[category]}"
         )
 
+    def build_mixed_scope_response(self, scope, physical_query):
+        category_labels = {
+            "tactical": "tactical",
+            "technical": "technical",
+            "mental": "mental",
+            "team_context": "team-context",
+        }
+        categories = ", ".join(category_labels[category] for category in scope["matched_categories"])
+        return (
+            f"Part of that question is outside scope because it moves into {categories}. "
+            f"I will answer only the physical part: {physical_query}."
+        )
+
+    def build_unclear_scope_response(self):
+        return (
+            "I can only answer questions about physical tracking data here. "
+            "Ask about speed, acceleration, agility, endurance, distance, intensity, or another physical metric."
+        )
+
     def handle_input(self, input, reasoning_effort=None, temperature=1, stream=False):
-        scope = self.classify_scope(input)
+        routed_query = self.route_query(input)
+        scope = routed_query["scope"]
+        model_query = routed_query["query"]
         self.messages_to_display.append({"role": "user", "content": input})
-        self.maybe_update_player_context(input)
+
+        if routed_query["route"] == self.QUERY_ROUTE_NON_PHYSICAL:
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_refusal_response(scope),
+                }
+            )
+            return
+
+        if routed_query["route"] == self.QUERY_ROUTE_UNCLEAR:
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_unclear_scope_response(),
+                }
+            )
+            return
+
+        if routed_query["route"] == self.QUERY_ROUTE_MIXED:
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_mixed_scope_response(scope, model_query),
+                }
+            )
+
+        self.maybe_update_player_context(model_query)
 
         if scope["should_refuse"]:
             self.messages_to_display.append(
                 {
                     "role": "assistant",
                     "content": self.build_refusal_response(scope),
+                }
+            )
+            return
+
+        if self.player_resolution_status == self.PLAYER_RESOLUTION_AMBIGUOUS:
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_ambiguous_player_response(),
                 }
             )
             return
@@ -841,12 +1107,33 @@ class PhysicalChat(Chat):
 
         messages = self.instruction_messages()
         messages = messages + self.messages_to_display[:-1].copy()
-        relevant_info = self.get_relevant_info(input)
-        messages.append(
-            {
-                "role": "user",
-                "content": f"Here is the relevant information to answer the users query: {relevant_info}\n\n```User: {input}```",
-            }
+        scope_context = self.build_scope_context(scope)
+        answer_contract = self.build_answer_contract_context(model_query)
+        player_context = self.build_active_player_context()
+        retrieved_evidence = self.build_retrieved_evidence(model_query)
+        messages.extend(
+            [
+                {
+                    "role": "system",
+                    "content": scope_context,
+                },
+                {
+                    "role": "system",
+                    "content": answer_contract,
+                },
+                {
+                    "role": "system",
+                    "content": player_context,
+                },
+                {
+                    "role": "system",
+                    "content": retrieved_evidence,
+                },
+                {
+                    "role": "user",
+                    "content": f"```User: {model_query}```",
+                },
+            ]
         )
         messages = [
             message for message in messages if isinstance(message["content"], str)

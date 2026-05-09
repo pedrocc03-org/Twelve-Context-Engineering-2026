@@ -148,9 +148,9 @@ class PhysicalDescription(Description):
                 "content": (
                     "You are an experienced physical performance analyst working in elite football. "
                     "You write concise physical profiles for coaching staff and recruitment departments. "
-                    "You focus on what physical data means for how a player actually performs on the pitch — "
-                    "not just reciting numbers, but interpreting what those numbers imply about playing style, "
-                    "tactical suitability, and areas for physical development. "
+                    "You focus only on tracked physical data and what it says about the player's movement capacity, "
+                    "speed, acceleration, agility, endurance, distance, intensity, and physical limitations. "
+                    "You do not discuss tactics, technical quality, mentality, team fit, or broader football interpretation. "
                     "You write in British English and refer to the sport as football."
                 ),
             },
@@ -246,11 +246,12 @@ class PhysicalDescription(Description):
             "- Use direct language. Say 'he is a speed-focused midfielder' not 'he shows a speed-focused profile'. "
             "  Say 'he has good pace' not 'he combines solid pace'. "
             "  Say 'he is quick' not 'his speed is good'. Say 'allows him to' not 'enables'. "
-            "- Only describe what the physical data shows. Do not infer tactical behaviours, "
-            "  playing style, or football intelligence. You can say what his body can and cannot do, "
-            "  not how he uses it. "
+            "- Only describe what the physical data shows. Do not infer tactics, role suitability, "
+            "  technical quality, mentality, football intelligence, or team context. "
+            "- You can say what the player's body can and cannot do physically. "
+            "  Do not say how he plays, how he fits a system, or what he would do in match situations. "
             "- Frame output as what the player's physicality allows or limits. "
-            "  Say 'his agility allows him to change direction quickly' not 'he frequently changes direction'. "
+            "  Say 'his agility allows him to change direction quickly' not 'he frequently changes direction in games'. "
             "- Never capitalise any word mid-sentence. "
             "- Do not mention z-scores, percentile numbers, or ranks. "
             "- Do not start with the player's name — start with the profile description."
@@ -260,22 +261,22 @@ class PhysicalDescription(Description):
             prompt = (
                 "Please use the physical profile description enclosed with ``` to write a detailed physical report "
                 "of three to four sentences. "
-                "The first sentence should characterise the overall physical profile — what kind of athlete this is. "
+                "The first sentence should characterise the overall physical profile as an athlete. "
                 "The remaining sentences should reference the specific metric strengths and concerns listed under "
                 "'Strengths' and 'Areas of concern' in the profile, explaining in plain language what each means "
                 "for the player's physical capability. Cover both standout qualities and notable weaknesses. "
-                "Describe only what the player's body can or cannot do — never suggest what this means for pressing, "
-                "transitions, counter-attacks, tactical roles, or any on-pitch situation. "
+                "Describe only what the player's body can or cannot do physically. "
+                "Never mention pressing, transitions, counter-attacks, tactical roles, match actions, technical actions, or mentality. "
                 + shared_rules
             )
         else:
             prompt = (
                 "Please use the physical profile description enclosed with ``` to write a short, plain summary "
                 "of the player's physical profile. Two sentences maximum. "
-                "The first sentence should describe what type of physical profile this is — e.g. "
+                "The first sentence should describe what type of physical athlete this is — e.g. "
                 "'a relentless, non-explosive forward who covers large distances and changes direction a lot "
                 "but has average top speed and is slow to accelerate.' "
-                "If needed, a second sentence can add what this physically allows or limits. "
+                "If needed, a second sentence can add what this physically allows or limits, staying strictly within physical capacity. "
                 + shared_rules
             )
 

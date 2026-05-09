@@ -20,6 +20,44 @@ st.markdown(
         padding-left: 2rem !important;
         padding-right: 2rem !important;
     }
+
+    div[data-testid="stRadio"] > div {
+        gap: 0.35rem;
+        padding: 0.28rem;
+        background: #eef5f0;
+        border: 1px solid #d5e5da;
+        border-radius: 999px;
+        width: fit-content;
+    }
+
+    div[data-testid="stRadio"] > div > label {
+        min-height: 0;
+        padding: 0.45rem 0.8rem;
+        border-radius: 999px;
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    div[data-testid="stRadio"] > div > label:hover {
+        background: #e2efe7;
+    }
+
+    div[data-testid="stRadio"] > div > label:has(> input[tabindex="0"]) {
+        background: #009940;
+        border: 1px solid #009940;
+        box-shadow: 0 6px 18px rgba(0, 153, 64, 0.18);
+    }
+
+    div[data-testid="stRadio"] > div > label:has(> input[tabindex="0"]) > div:last-child {
+        color: #ffffff;
+        font-weight: 700;
+    }
+
+    div[data-testid="stRadio"] > div > label > div:last-child {
+        color: #0f2418;
+        font-weight: 600;
+        padding-left: 0.2rem;
+        padding-right: 0.2rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -77,7 +115,8 @@ st.markdown(
 
 selected_view = st.radio(
     "Physical Analyst View",
-    ["Player Profile", "Chat"],
+    ["Profile", "Chat"],
+    index=1,
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -86,7 +125,7 @@ st.divider()
 
 raw_df = load_raw_data()
 
-if selected_view == "Player Profile":
+if selected_view == "Profile":
     # ── Filters ────────────────────────────────────────────────────────────────
     st.markdown(
         "<div style='font-size:11px;font-weight:700;color:#009940;"
@@ -234,6 +273,43 @@ if selected_view == "Player Profile":
         st.markdown(st.session_state[profile_report_key])
 else:
     st.divider()
+
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stChatInput"] > div {
+            background: #0b2f22 !important;
+            border: 1px solid #0b2f22 !important;
+            border-radius: 999px !important;
+        }
+
+        div[data-testid="stChatInput"] > div:focus-within {
+            border-color: #0b2f22 !important;
+            box-shadow: none !important;
+        }
+
+        div[data-testid="stChatInput"] textarea,
+        div[data-testid="stChatInput"] input {
+            background: transparent !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            caret-color: #ffffff !important;
+        }
+
+        div[data-testid="stChatInput"] textarea::placeholder,
+        div[data-testid="stChatInput"] input::placeholder {
+            color: rgba(255, 255, 255, 0.8) !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.8) !important;
+        }
+
+        div[data-testid="stChatInput"] button {
+            background: transparent !important;
+            border: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col_report_title, col_regen = st.columns([4, 2], vertical_alignment="center")
     with col_report_title:

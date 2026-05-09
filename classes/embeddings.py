@@ -2,6 +2,7 @@ import pandas as pd
 from utils.embeddings_utils import get_embedding, cosine_similarity
 import re
 from functools import lru_cache
+import unicodedata
 
 from settings import (
     GPT_EMBEDDINGS_MODEL,
@@ -146,8 +147,69 @@ class PersonEmbeddings(Embeddings):
         return df_embeddings
 
 
+PHYSICAL_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "about",
+    "can",
+    "do",
+    "does",
+    "for",
+    "from",
+    "get",
+    "give",
+    "he",
+    "her",
+    "him",
+    "his",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "like",
+    "mean",
+    "me",
+    "of",
+    "on",
+    "or",
+    "player",
+    "physical",
+    "profile",
+    "tell",
+    "that",
+    "the",
+    "this",
+    "to",
+    "what",
+}
+
+
+def _normalize_text(text):
+    text = str(text).strip().lower()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _normalize_tokens(text):
-    return set(re.findall(r"[a-z0-9]+", str(text).lower()))
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", _normalize_text(text))
+        if len(token) > 1 and token not in PHYSICAL_STOPWORDS
+    }
+
+
+def _phrase_in_text(phrase, text):
+    if not phrase or not text:
+        return False
+    pattern = r"(?<![a-z0-9])" + re.escape(phrase) + r"(?![a-z0-9])"
+    return re.search(pattern, text) is not None
 
 
 class PhysicalEmbeddings(Embeddings):
@@ -167,22 +229,41 @@ class PhysicalEmbeddings(Embeddings):
                     "assistant": row["assistant"],
                     "category": "metric_definition",
                     "format": "qa",
+                    "attribute": None,
+                    "metric": None,
+                    "aliases": tuple(),
                 }
             )
 
         for attr, info in ATTRIBUTE_INFO.items():
+            attr_normalized = _normalize_text(attr)
             docs.append(
                 {
                     "user": f"What does {attr.lower()} mean in the physical analyst?",
                     "assistant": info["definition"],
                     "category": "attribute_definition",
                     "format": "attribute",
+                    "attribute": attr,
+                    "metric": None,
+                    "aliases": (attr_normalized,),
                 }
             )
 
             for metric in info["metrics"]:
                 raw_metric = metric.replace(" (INV)", "")
                 friendly = FRIENDLY_NAMES.get(raw_metric, raw_metric)
+                alias_phrases = tuple(
+                    dict.fromkeys(
+                        filter(
+                            None,
+                            (
+                                _normalize_text(friendly),
+                                _normalize_text(raw_metric),
+                                attr_normalized,
+                            ),
+                        )
+                    )
+                )
                 docs.append(
                     {
                         "user": f"What does {friendly} mean?",
@@ -192,32 +273,78 @@ class PhysicalEmbeddings(Embeddings):
                         ),
                         "category": attr.lower(),
                         "format": "metric_alias",
+                        "attribute": attr,
+                        "metric": raw_metric,
+                        "aliases": alias_phrases,
                     }
                 )
 
         df = pd.DataFrame(docs).drop_duplicates(subset=["user", "assistant"]).reset_index(drop=True)
+        df["normalized_user"] = df["user"].fillna("").astype(str).apply(_normalize_text)
+        df["normalized_assistant"] = df["assistant"].fillna("").astype(str).apply(_normalize_text)
+        df["normalized_text"] = (
+            df["normalized_user"].fillna("") + " " + df["normalized_assistant"].fillna("")
+        ).str.strip()
         df["tokens"] = (
-            df["user"].fillna("").astype(str) + " " + df["assistant"].fillna("").astype(str)
+            df["normalized_text"]
         ).apply(_normalize_tokens)
         return df
 
     def search(self, query, top_n=5):
+        query_text = _normalize_text(query)
         query_tokens = _normalize_tokens(query)
         if not query_tokens:
             return self.df_dict.head(0).copy()
 
         df = self.df_dict.copy()
+        asks_for_definition = any(phrase in query_text for phrase in ("what does", "mean", "definition", "explain"))
+        explicit_attribute_queries = set()
+        for attr in ATTRIBUTE_INFO:
+            normalized_attr = _normalize_text(attr)
+            if (
+                query_text == normalized_attr
+                or _phrase_in_text(f"what does {normalized_attr} mean", query_text)
+                or _phrase_in_text(f"define {normalized_attr}", query_text)
+                or _phrase_in_text(f"explain {normalized_attr}", query_text)
+                or _phrase_in_text(f"{normalized_attr} in the physical analyst", query_text)
+            ):
+                explicit_attribute_queries.add(attr)
 
         def score_row(row):
             overlap = len(query_tokens & row["tokens"])
-            if overlap == 0:
-                return 0.0
+            coverage = overlap / max(len(query_tokens), 1)
+            precision = overlap / max(len(row["tokens"]), 1)
+            score = 0.65 * coverage + 0.15 * precision
 
-            coverage = overlap / len(query_tokens)
-            query_text = str(query).lower()
-            user_text = str(row["user"]).lower()
-            phrase_bonus = 0.2 if user_text in query_text or query_text in user_text else 0.0
-            return coverage + phrase_bonus
+            alias_hits = 0
+            for alias in row["aliases"]:
+                if _phrase_in_text(alias, query_text):
+                    alias_hits += 1
+
+            if row["normalized_user"] and _phrase_in_text(row["normalized_user"], query_text):
+                score += 1.2
+            if alias_hits:
+                score += 0.45 * alias_hits
+
+            if asks_for_definition and row["format"] in {"metric_alias", "attribute", "qa"}:
+                score += 0.2
+
+            if row["attribute"] in explicit_attribute_queries:
+                score += 0.35
+                if row["format"] == "attribute":
+                    score += 1.0
+
+            if row["format"] == "metric_alias" and alias_hits:
+                score += 0.2
+
+            return score
 
         df["similarities"] = df.apply(score_row, axis=1)
-        return df[df["similarities"] > 0].sort_values("similarities", ascending=False).head(top_n)
+        return (
+            df[df["similarities"] > 0.2]
+            .sort_values(
+                ["similarities", "format", "category"],
+                ascending=[False, True, True],
+            )
+            .head(top_n)
+        )

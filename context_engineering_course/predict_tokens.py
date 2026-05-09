@@ -35,4 +35,3 @@ for _ in range(int(sys.argv[1])):
 # Print output wrapped to 70 columns
 print(textwrap.fill(' '.join(output)))
 
-
