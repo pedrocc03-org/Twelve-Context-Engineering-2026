@@ -48,6 +48,15 @@ def test_scope_routing():
     routed = chat.route_query("What does top speed mean?")
     assert_equal(routed["route"], chat.QUERY_ROUTE_PHYSICAL_ONLY, "Top speed query should be physical")
 
+    routed = chat.route_query("what are the top-5 fastest (peak velocity) players in the whole dataset?")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_RANKING, "Dataset-wide fastest query should route as ranking")
+
+    routed = chat.route_query("top 5 fastest players in the dataset")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_RANKING, "Plain fastest ranking query should route as ranking")
+
+    routed = chat.route_query("top5 players for speed in the dataset")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_RANKING, "Compact top5 ranking query should route as ranking")
+
     routed = chat.route_query("Is he a good finisher?")
     assert_equal(routed["route"], chat.QUERY_ROUTE_NON_PHYSICAL, "Finishing query should be non-physical")
 
@@ -83,12 +92,32 @@ def test_scope_routing():
     assert_equal(routed["route"], chat.QUERY_ROUTE_UNCLEAR, "One-sided comparison should be unclear")
 
     chat.messages_to_display = [{"role": "user", "content": "analyze kylian mbappe velocity"}]
+    routed = chat.route_query("Mbappé")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_PHYSICAL_ONLY, "Bare player follow-up should route as physical")
+    assert_true("Mbappé" in routed["query"], "Bare player follow-up should include the player name")
+    assert_true("velocity" in routed["query"].lower(), "Bare player follow-up should carry the prior topic")
+
     routed = chat.route_query("and camavinga")
     assert_equal(routed["route"], chat.QUERY_ROUTE_PHYSICAL_ONLY, "Elliptical follow-up should route as physical")
     assert_true("Camavinga" in routed["query"], "Elliptical follow-up should resolve the new player")
     assert_true(
         "velocity" in routed["query"].lower(),
         "Elliptical follow-up should carry over the prior physical topic",
+    )
+
+    ranking_response = chat.build_ranking_response("what are the top-5 fastest (peak velocity) players in the whole dataset?")
+    assert_true(
+        ranking_response.startswith("Top 5 fastest (peak velocity) players in the dataset:"),
+        "Ranking response should start with a dataset-wide heading",
+    )
+    assert_true(
+        "Raw Speed:" in ranking_response,
+        "Ranking response should include raw speed values",
+    )
+    assert_equal(
+        len([line for line in ranking_response.splitlines() if line.strip().startswith(tuple(str(i) for i in range(1, 6))) or line.strip().startswith("Note:")]),
+        6,
+        "Ranking response should contain five ranked players plus a note",
     )
 
     chat.maybe_update_player_context("Acceleration and agility for Adam Armstrong")

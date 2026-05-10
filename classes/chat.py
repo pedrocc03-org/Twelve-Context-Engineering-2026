@@ -506,6 +506,7 @@ class PhysicalChat(Chat):
     QUERY_ROUTE_NON_PHYSICAL = "non_physical"
     QUERY_ROUTE_UNCLEAR = "unclear"
     QUERY_ROUTE_COMPARISON = "comparison"
+    QUERY_ROUTE_RANKING = "ranking"
     PLAYER_RESOLUTION_NONE = "none"
     PLAYER_RESOLUTION_RESOLVED = "resolved"
     PLAYER_RESOLUTION_AMBIGUOUS = "ambiguous"
@@ -946,6 +947,102 @@ class PhysicalChat(Chat):
             f"Player B physical profile:\n{right_description}"
         )
 
+    def is_dataset_ranking_query(self, query_text):
+        normalized = self.normalize_player_text(query_text)
+        rank_signals = (
+            "top 5",
+            "top five",
+            "five fastest",
+            "rank ",
+            "ranking",
+            "whole dataset",
+            "entire dataset",
+            "all players",
+            "everyone",
+            "overall",
+            "full dataset",
+            "dataset",
+        )
+        if not any(signal in normalized for signal in rank_signals):
+            return False
+
+        metric_signals = (
+            "speed",
+            "top speed",
+            "velocity",
+            "peak velocity",
+            "fastest",
+            "fast",
+            "pace",
+            "quickness",
+            "quickest",
+            "acceleration",
+            "agility",
+            "endurance",
+            "distance",
+            "intensity",
+        )
+        if not any(signal in normalized for signal in metric_signals):
+            return False
+
+        ranking_intent = (
+            "top5",
+            "top 5",
+            "top five",
+            "five fastest",
+            "rank ",
+            "ranking",
+            "fastest players",
+            "quickest players",
+            "highest players",
+            "best players",
+            "most players",
+            "whole dataset",
+            "entire dataset",
+            "all players",
+            "everyone",
+            "overall",
+            "full dataset",
+        )
+        return any(signal in normalized for signal in ranking_intent)
+
+    def infer_ranking_metric(self, query_text):
+        normalized = self.normalize_player_text(query_text)
+        if any(signal in normalized for signal in ("peak velocity", "top speed", "velocity", "fastest", "speed", "pace")):
+            return "Speed", "peak velocity"
+        if any(signal in normalized for signal in ("acceleration", "explosive")):
+            return "Acceleration", "acceleration"
+        if any(signal in normalized for signal in ("agility", "agile", "turning")):
+            return "Agility", "agility"
+        if any(signal in normalized for signal in ("endurance", "stamina", "distance", "intensity")):
+            return "Endurance", "endurance"
+        return "Speed", "peak velocity"
+
+    def build_ranking_response(self, query_text):
+        if self.all_players_df is None or self.all_players_df.empty:
+            return "I do not have dataset-wide physical data loaded for ranking right now."
+
+        metric_column, metric_label = self.infer_ranking_metric(query_text)
+        ranked_df = self.all_players_df.copy()
+        ranked_df[metric_column] = ranked_df[metric_column].astype(float)
+        ranked_df = ranked_df.sort_values(metric_column, ascending=False).head(5).reset_index(drop=True)
+
+        lines = [f"Top 5 fastest ({metric_label}) players in the dataset:"]
+        for idx, row in ranked_df.iterrows():
+            player = str(row.get("Player", "")).strip()
+            team = str(row.get("Team", "")).strip()
+            position_group = str(row.get("Position Group", "")).strip()
+            value = row.get(metric_column, "")
+            details = " | ".join(part for part in [team, position_group] if part)
+            lines.append(f"{idx + 1}. {player}")
+            if details:
+                lines.append(f"   Team / role: {details}")
+            lines.append(f"   Raw {metric_column}: {value}")
+            lines.append("")
+
+        lines.append(f"Note: {metric_column} is the dataset's peak-velocity proxy.")
+        return "\n".join(lines)
+
     def classify_scope(self, query):
         tokens = set(re.findall(r"[a-z0-9]+", str(query).lower()))
         matched_categories = [
@@ -975,10 +1072,21 @@ class PhysicalChat(Chat):
         if elliptical_followup is not None:
             return elliptical_followup
 
+        bare_player_followup = self.resolve_bare_player_followup(query_text)
+        if bare_player_followup is not None:
+            return bare_player_followup
+
         if self.is_comparison_query(query_text):
             comparison = self.resolve_comparison_players(query_text)
             if comparison["route"] != self.QUERY_ROUTE_UNCLEAR:
                 return comparison
+
+        if self.is_dataset_ranking_query(query_text):
+            return {
+                "route": self.QUERY_ROUTE_RANKING,
+                "query": query_text,
+                "scope": scope,
+            }
 
         if scope["in_scope_hits"] and not scope["matched_categories"]:
             return {
@@ -1255,6 +1363,31 @@ class PhysicalChat(Chat):
             "scope": self.classify_scope(topic),
         }
 
+    def resolve_bare_player_followup(self, query_text):
+        normalized_query = self.normalize_player_text(query_text)
+        if not normalized_query or self.contains_explicit_player_hint(normalized_query) is False:
+            return None
+
+        if self.is_elliptical_followup(normalized_query):
+            return None
+
+        last_user_message = self.get_last_user_message()
+        topic = self.extract_physical_topic_from_text(last_user_message)
+        if not topic:
+            return None
+
+        player_candidate = self.resolve_player_context(normalized_query)
+        if player_candidate is not None:
+            player_name = str(player_candidate[0].get("Player", "")).strip()
+        else:
+            player_name = normalized_query.title()
+
+        return {
+            "route": self.QUERY_ROUTE_PHYSICAL_ONLY,
+            "query": f"{player_name} {topic}",
+            "scope": self.classify_scope(topic),
+        }
+
     def generate_response(self, messages, reasoning_effort=None, temperature=1, stream=False):
         if USE_GEMINI:
             import google.generativeai as genai
@@ -1371,6 +1504,15 @@ class PhysicalChat(Chat):
             )
             return
 
+        if routed_query["route"] == self.QUERY_ROUTE_RANKING:
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_ranking_response(model_query),
+                }
+            )
+            return
+
         if routed_query["route"] == self.QUERY_ROUTE_MIXED:
             self.messages_to_display.append(
                 {
@@ -1395,6 +1537,15 @@ class PhysicalChat(Chat):
                 {
                     "role": "assistant",
                     "content": self.build_ambiguous_player_response(),
+                }
+            )
+            return
+
+        if self.is_dataset_ranking_query(input):
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_ranking_response(input),
                 }
             )
             return
