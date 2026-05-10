@@ -82,6 +82,23 @@ def test_scope_routing():
     routed = chat.route_query("Compare Adam Armstrong with")
     assert_equal(routed["route"], chat.QUERY_ROUTE_UNCLEAR, "One-sided comparison should be unclear")
 
+    chat.messages_to_display = [{"role": "user", "content": "analyze kylian mbappe velocity"}]
+    routed = chat.route_query("and camavinga")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_PHYSICAL_ONLY, "Elliptical follow-up should route as physical")
+    assert_true("Camavinga" in routed["query"], "Elliptical follow-up should resolve the new player")
+    assert_true(
+        "velocity" in routed["query"].lower(),
+        "Elliptical follow-up should carry over the prior physical topic",
+    )
+
+    chat.maybe_update_player_context("Acceleration and agility for Adam Armstrong")
+    chat.maybe_update_player_context("and camavinga")
+    assert_equal(
+        chat.player_row,
+        None,
+        "Unresolved explicit player follow-up should clear the stale player context",
+    )
+
 
 def test_player_resolution():
     chat = make_chat()

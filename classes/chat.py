@@ -802,6 +802,14 @@ class PhysicalChat(Chat):
             self.player_row, self.position_df, self.raw_position_df = resolved
             self.name = self.player_row["Player"]
         else:
+            if (
+                self.player_resolution_status != self.PLAYER_RESOLUTION_AMBIGUOUS
+                and self.should_clear_player_context(query)
+            ):
+                self.player_row = None
+                self.position_df = None
+                self.raw_position_df = None
+                self.player_resolution_status = self.PLAYER_RESOLUTION_NONE
             self.name = self.player_row["Player"] if self.player_row is not None else "physical analyst"
         return resolved
 
@@ -962,6 +970,10 @@ class PhysicalChat(Chat):
                 "query": query_text,
                 "scope": scope,
             }
+
+        elliptical_followup = self.resolve_elliptical_followup(query_text)
+        if elliptical_followup is not None:
+            return elliptical_followup
 
         if self.is_comparison_query(query_text):
             comparison = self.resolve_comparison_players(query_text)
@@ -1157,6 +1169,92 @@ class PhysicalChat(Chat):
             "Ask about speed, acceleration, agility, endurance, distance, intensity, or another physical metric."
         )
 
+    def contains_explicit_player_hint(self, query_text):
+        tokens = re.findall(r"[a-z0-9]+", self.normalize_player_text(query_text))
+        ignore_tokens = {
+            "and",
+            "also",
+            "analyze",
+            "analyse",
+            "compare",
+            "compared",
+            "with",
+            "against",
+            "what",
+            "does",
+            "do",
+            "is",
+            "are",
+            "the",
+            "a",
+            "an",
+            "please",
+            "physical",
+            "player",
+            "profile",
+            "tell",
+            "me",
+            "about",
+            "how",
+            "this",
+            "that",
+            "i",
+            "want",
+            "to",
+        }
+        return any(
+            token not in self.IN_SCOPE_KEYWORDS
+            and token not in ignore_tokens
+            and token not in {"vs", "versus"}
+            and len(token) >= 3
+            for token in tokens
+        )
+
+    def should_clear_player_context(self, query_text):
+        return self.is_elliptical_followup(query_text) or self.contains_explicit_player_hint(query_text)
+
+    def get_last_user_message(self):
+        for message in reversed(self.messages_to_display):
+            if message.get("role") == "user":
+                return str(message.get("content", ""))
+        return ""
+
+    def extract_physical_topic_from_text(self, text):
+        tokens = re.findall(r"[a-z0-9]+", self.normalize_player_text(text))
+        topic_tokens = [token for token in tokens if token in self.IN_SCOPE_KEYWORDS]
+        if not topic_tokens:
+            return ""
+        return " ".join(dict.fromkeys(topic_tokens))
+
+    def is_elliptical_followup(self, query_text):
+        normalized = self.normalize_player_text(query_text)
+        return bool(normalized) and normalized.startswith(("and ", "also ", "plus ", "then "))
+
+    def resolve_elliptical_followup(self, query_text):
+        if not self.is_elliptical_followup(query_text):
+            return None
+
+        last_user_message = self.get_last_user_message()
+        topic = self.extract_physical_topic_from_text(last_user_message)
+        if not topic:
+            return None
+
+        stripped_query = re.sub(r"^(and|also|plus|then)\s+", "", self.normalize_player_text(query_text)).strip()
+        if not stripped_query:
+            return None
+
+        player_candidate = self.resolve_player_context(stripped_query)
+        if player_candidate is not None:
+            player_name = str(player_candidate[0].get("Player", "")).strip()
+        else:
+            player_name = stripped_query.title()
+
+        return {
+            "route": self.QUERY_ROUTE_PHYSICAL_ONLY,
+            "query": f"{player_name} {topic}",
+            "scope": self.classify_scope(topic),
+        }
+
     def generate_response(self, messages, reasoning_effort=None, temperature=1, stream=False):
         if USE_GEMINI:
             import google.generativeai as genai
@@ -1327,6 +1425,19 @@ class PhysicalChat(Chat):
             return
 
         if self.player_row is None and self.needs_named_player(input):
+            self.messages_to_display.append(
+                {
+                    "role": "assistant",
+                    "content": self.build_missing_player_response(),
+                }
+            )
+            return
+
+        if (
+            routed_query["route"] == self.QUERY_ROUTE_PHYSICAL_ONLY
+            and self.player_row is None
+            and self.contains_explicit_player_hint(model_query)
+        ):
             self.messages_to_display.append(
                 {
                     "role": "assistant",
