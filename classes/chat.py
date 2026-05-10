@@ -505,6 +505,7 @@ class PhysicalChat(Chat):
     QUERY_ROUTE_MIXED = "mixed"
     QUERY_ROUTE_NON_PHYSICAL = "non_physical"
     QUERY_ROUTE_UNCLEAR = "unclear"
+    QUERY_ROUTE_COMPARISON = "comparison"
     PLAYER_RESOLUTION_NONE = "none"
     PLAYER_RESOLUTION_RESOLVED = "resolved"
     PLAYER_RESOLUTION_AMBIGUOUS = "ambiguous"
@@ -912,6 +913,31 @@ class PhysicalChat(Chat):
             evidence_lines.append(f"[{idx}] Physical answer: {row['assistant']}")
         return "\n".join(evidence_lines)
 
+    def build_comparison_context(self, comparison_query):
+        left = comparison_query["left"]
+        right = comparison_query["right"]
+
+        left_description = PhysicalDescription(
+            left["player_row"],
+            left["position_df"],
+            left["raw_position_df"],
+            detailed=self.detailed,
+        ).synthesize_text()
+        right_description = PhysicalDescription(
+            right["player_row"],
+            right["position_df"],
+            right["raw_position_df"],
+            detailed=self.detailed,
+        ).synthesize_text()
+
+        return (
+            "Comparison context:\n"
+            f"- Player A: {left['player_row']['Player']} | {left['player_row']['Position Group']} | {left['player_row']['Team']}\n"
+            f"- Player B: {right['player_row']['Player']} | {right['player_row']['Position Group']} | {right['player_row']['Team']}\n\n"
+            f"Player A physical profile:\n{left_description}\n\n"
+            f"Player B physical profile:\n{right_description}"
+        )
+
     def classify_scope(self, query):
         tokens = set(re.findall(r"[a-z0-9]+", str(query).lower()))
         matched_categories = [
@@ -936,6 +962,11 @@ class PhysicalChat(Chat):
                 "query": query_text,
                 "scope": scope,
             }
+
+        if self.is_comparison_query(query_text):
+            comparison = self.resolve_comparison_players(query_text)
+            if comparison["route"] != self.QUERY_ROUTE_UNCLEAR:
+                return comparison
 
         if scope["in_scope_hits"] and not scope["matched_categories"]:
             return {
@@ -969,6 +1000,72 @@ class PhysicalChat(Chat):
             "route": self.QUERY_ROUTE_UNCLEAR,
             "query": query_text,
             "scope": scope,
+        }
+
+    def is_comparison_query(self, query_text):
+        query_text = str(query_text).lower()
+        return any(token in query_text for token in (" vs ", " versus ", " compare ", " compared "))
+
+    def strip_comparison_preface(self, text):
+        cleaned = self.normalize_player_text(text)
+        cleaned = re.sub(r"^(compare|compared|vs|versus)\s+", "", cleaned).strip()
+        cleaned = re.sub(r"^(the\s+)?physical\s+", "", cleaned).strip()
+        return cleaned
+
+    def resolve_player_from_fragment(self, fragment):
+        fragment = self.strip_comparison_preface(fragment)
+        if not fragment:
+            return None
+        return self.resolve_player_context(fragment)
+
+    def resolve_comparison_players(self, query):
+        cleaned_query = re.sub(r"\s+", " ", str(query)).strip()
+        parts = re.split(r"\bvs\b|\bversus\b", cleaned_query, flags=re.IGNORECASE)
+        if len(parts) < 2:
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": cleaned_query,
+                "scope": self.classify_scope(cleaned_query),
+            }
+
+        left_fragment = parts[0]
+        right_fragment = " vs ".join(parts[1:])
+        left_resolved = self.resolve_player_from_fragment(left_fragment)
+        right_resolved = self.resolve_player_from_fragment(right_fragment)
+
+        if left_resolved is None or right_resolved is None:
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": cleaned_query,
+                "scope": self.classify_scope(cleaned_query),
+            }
+
+        left_player_row, left_position_df, left_raw_position_df = left_resolved
+        right_player_row, right_position_df, right_raw_position_df = right_resolved
+
+        if left_player_row["Player"] == right_player_row["Player"]:
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": cleaned_query,
+                "scope": self.classify_scope(cleaned_query),
+            }
+
+        return {
+            "route": self.QUERY_ROUTE_COMPARISON,
+            "query": cleaned_query,
+            "scope": self.classify_scope(cleaned_query),
+            "comparison": {
+                "left": {
+                    "player_row": left_player_row,
+                    "position_df": left_position_df,
+                    "raw_position_df": left_raw_position_df,
+                },
+                "right": {
+                    "player_row": right_player_row,
+                    "position_df": right_position_df,
+                    "raw_position_df": right_raw_position_df,
+                },
+            },
         }
 
     def extract_physical_subquery(self, query):
@@ -1044,6 +1141,98 @@ class PhysicalChat(Chat):
             "Ask about speed, acceleration, agility, endurance, distance, intensity, or another physical metric."
         )
 
+    def generate_response(self, messages, reasoning_effort=None, temperature=1, stream=False):
+        if USE_GEMINI:
+            import google.generativeai as genai
+
+            converted_msgs = convert_messages_format(messages)
+            genai.configure(api_key=GEMINI_API_KEY)
+            model = genai.GenerativeModel(
+                model_name=GEMINI_CHAT_MODEL,
+                system_instruction=converted_msgs["system_instruction"],
+            )
+            chat = model.start_chat(history=converted_msgs["history"])
+            response = chat.send_message(content=converted_msgs["content"])
+            return response.text
+
+        if USE_LM_STUDIO:
+            client = OpenAI(api_key=LM_STUDIO_API_KEY, base_url=LM_STUDIO_API_BASE)
+            if stream:
+                chunks = [
+                    chunk.choices[0].delta.content
+                    for chunk in client.chat.completions.create(
+                        model=LM_STUDIO_CHAT_MODEL,
+                        messages=messages,
+                        temperature=temperature,
+                        stream=True,
+                    )
+                    if chunk.choices and chunk.choices[0].delta.content
+                ]
+
+                def streamed_chunks():
+                    yield from chunks
+
+                return streamed_chunks()
+
+            response = client.chat.completions.create(
+                model=LM_STUDIO_CHAT_MODEL,
+                messages=messages,
+                temperature=temperature,
+            )
+            return response.choices[0].message.content
+
+        client = OpenAI(api_key=GPT_KEY, base_url=GPT_BASE)
+        if stream:
+            if GPT_SUPPORTS_REASONING:
+                reasoning_effort = reasoning_effort if reasoning_effort in GPT_AVAILABLE_REASONING_EFFORTS else GPT_AVAILABLE_REASONING_EFFORTS[0]
+                response_stream = client.responses.create(
+                    model=GPT_CHAT_MODEL,
+                    input=messages,
+                    reasoning={"effort": reasoning_effort},
+                    stream=True,
+                )
+            elif GPT_SUPPORTS_TEMPERATURE:
+                response_stream = client.responses.create(
+                    model=GPT_CHAT_MODEL,
+                    input=messages,
+                    temperature=temperature,
+                    stream=True,
+                )
+            else:
+                response_stream = client.responses.create(
+                    model=GPT_CHAT_MODEL,
+                    input=messages,
+                    stream=True,
+                )
+
+            def streamed_chunks():
+                for event in response_stream:
+                    if event.type == "response.output_text.delta":
+                        yield event.delta
+
+            return streamed_chunks()
+
+        if GPT_SUPPORTS_REASONING:
+            reasoning_effort = reasoning_effort if reasoning_effort in GPT_AVAILABLE_REASONING_EFFORTS else GPT_AVAILABLE_REASONING_EFFORTS[0]
+            response = client.responses.create(
+                model=GPT_CHAT_MODEL,
+                input=messages,
+                reasoning={"effort": reasoning_effort},
+            )
+        elif GPT_SUPPORTS_TEMPERATURE:
+            response = client.responses.create(
+                model=GPT_CHAT_MODEL,
+                input=messages,
+                temperature=temperature,
+            )
+        else:
+            response = client.responses.create(
+                model=GPT_CHAT_MODEL,
+                input=messages,
+            )
+
+        return response.output_text
+
     def handle_input(self, input, reasoning_effort=None, temperature=1, stream=False):
         routed_query = self.route_query(input)
         scope = routed_query["scope"]
@@ -1096,6 +1285,31 @@ class PhysicalChat(Chat):
             )
             return
 
+        if routed_query["route"] == self.QUERY_ROUTE_COMPARISON:
+            comparison = routed_query["comparison"]
+            messages = self.instruction_messages()
+            messages = messages + self.messages_to_display[:-1].copy()
+            scope_context = self.build_scope_context(scope)
+            answer_contract = self.build_answer_contract_context(model_query)
+            comparison_context = self.build_comparison_context(comparison)
+            retrieved_evidence = self.build_retrieved_evidence(model_query)
+            messages.extend(
+                [
+                    {"role": "system", "content": scope_context},
+                    {"role": "system", "content": answer_contract},
+                    {"role": "system", "content": comparison_context},
+                    {"role": "system", "content": retrieved_evidence},
+                    {"role": "user", "content": f"```User: {model_query}```"},
+                ]
+            )
+            messages = [
+                message for message in messages if isinstance(message["content"], str)
+            ]
+            st.expander("Chat transcript", expanded=False).write(messages)
+            answer = self.generate_response(messages, reasoning_effort, temperature, stream)
+            self.messages_to_display.append({"role": "assistant", "content": answer})
+            return
+
         if self.player_row is None and self.needs_named_player(input):
             self.messages_to_display.append(
                 {
@@ -1139,95 +1353,5 @@ class PhysicalChat(Chat):
             message for message in messages if isinstance(message["content"], str)
         ]
         st.expander("Chat transcript", expanded=False).write(messages)
-
-        if USE_GEMINI:
-            import google.generativeai as genai
-
-            converted_msgs = convert_messages_format(messages)
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel(
-                model_name=GEMINI_CHAT_MODEL,
-                system_instruction=converted_msgs["system_instruction"],
-            )
-            chat = model.start_chat(history=converted_msgs["history"])
-            response = chat.send_message(content=converted_msgs["content"])
-            answer = response.text
-        elif USE_LM_STUDIO:
-            client = OpenAI(api_key=LM_STUDIO_API_KEY, base_url=LM_STUDIO_API_BASE)
-            if stream:
-                chunks = [
-                    chunk.choices[0].delta.content
-                    for chunk in client.chat.completions.create(
-                        model=LM_STUDIO_CHAT_MODEL,
-                        messages=messages,
-                        temperature=temperature,
-                        stream=True,
-                    )
-                    if chunk.choices and chunk.choices[0].delta.content
-                ]
-
-                def streamed_chunks():
-                    yield from chunks
-
-                answer = streamed_chunks()
-            else:
-                response = client.chat.completions.create(
-                    model=LM_STUDIO_CHAT_MODEL,
-                    messages=messages,
-                    temperature=temperature,
-                )
-                answer = response.choices[0].message.content
-        else:
-            client = OpenAI(api_key=GPT_KEY, base_url=GPT_BASE)
-            if stream:
-                if GPT_SUPPORTS_REASONING:
-                    reasoning_effort = reasoning_effort if reasoning_effort in GPT_AVAILABLE_REASONING_EFFORTS else GPT_AVAILABLE_REASONING_EFFORTS[0]
-                    response_stream = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                        reasoning={"effort": reasoning_effort},
-                        stream=True,
-                    )
-                elif GPT_SUPPORTS_TEMPERATURE:
-                    response_stream = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                        temperature=temperature,
-                        stream=True,
-                    )
-                else:
-                    response_stream = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                        stream=True,
-                    )
-
-                def streamed_chunks():
-                    for event in response_stream:
-                        if event.type == "response.output_text.delta":
-                            yield event.delta
-
-                answer = streamed_chunks()
-            else:
-                if GPT_SUPPORTS_REASONING:
-                    reasoning_effort = reasoning_effort if reasoning_effort in GPT_AVAILABLE_REASONING_EFFORTS else GPT_AVAILABLE_REASONING_EFFORTS[0]
-                    response = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                        reasoning={"effort": reasoning_effort},
-                    )
-                elif GPT_SUPPORTS_TEMPERATURE:
-                    response = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                        temperature=temperature,
-                    )
-                else:
-                    response = client.responses.create(
-                        model=GPT_CHAT_MODEL,
-                        input=messages,
-                    )
-
-                answer = response.output_text
-
+        answer = self.generate_response(messages, reasoning_effort, temperature, stream)
         self.messages_to_display.append({"role": "assistant", "content": answer})

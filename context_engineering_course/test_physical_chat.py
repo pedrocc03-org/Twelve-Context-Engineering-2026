@@ -58,6 +58,19 @@ def test_scope_routing():
     routed = chat.route_query("Tell me about him")
     assert_equal(routed["route"], chat.QUERY_ROUTE_UNCLEAR, "Vague query should be unclear")
 
+    routed = chat.route_query("Compare Adam Armstrong vs Sinclair Armstrong physically")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_COMPARISON, "Comparison query should route as comparison")
+    assert_equal(
+        routed["comparison"]["left"]["player_row"]["Player"],
+        "Adam Armstrong",
+        "Left comparison player should be Adam Armstrong",
+    )
+    assert_equal(
+        routed["comparison"]["right"]["player_row"]["Player"],
+        "Sinclair Armstrong",
+        "Right comparison player should be Sinclair Armstrong",
+    )
+
 
 def test_player_resolution():
     chat = make_chat()
@@ -119,11 +132,20 @@ def test_answer_contract_inference():
     assert_equal(answer_type, "comparison", "Comparison query should infer comparison answer type")
 
 
+def test_comparison_context():
+    chat = make_chat()
+    routed = chat.route_query("Compare Adam Armstrong vs Sinclair Armstrong physically")
+    context = chat.build_comparison_context(routed["comparison"])
+    assert_true("Player A physical profile" in context, "Comparison context should include player A profile")
+    assert_true("Player B physical profile" in context, "Comparison context should include player B profile")
+
+
 def main():
     test_scope_routing()
     test_player_resolution()
     test_retrieval_ranking()
     test_answer_contract_inference()
+    test_comparison_context()
     print("Physical chat regression checks passed.")
 
 
