@@ -71,6 +71,17 @@ def test_scope_routing():
         "Right comparison player should be Sinclair Armstrong",
     )
 
+    routed = chat.route_query("Adam Armstrong against Sinclair Armstrong")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_COMPARISON, "Against query should route as comparison")
+    assert_equal(
+        routed["comparison"]["left"]["player_row"]["Player"],
+        "Adam Armstrong",
+        "Against query should resolve left player",
+    )
+
+    routed = chat.route_query("Compare Adam Armstrong with")
+    assert_equal(routed["route"], chat.QUERY_ROUTE_UNCLEAR, "One-sided comparison should be unclear")
+
 
 def test_player_resolution():
     chat = make_chat()

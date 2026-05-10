@@ -1004,7 +1004,11 @@ class PhysicalChat(Chat):
 
     def is_comparison_query(self, query_text):
         query_text = str(query_text).lower()
-        return any(token in query_text for token in (" vs ", " versus ", " compare ", " compared "))
+        if any(token in query_text for token in (" vs ", " versus ", " against ")):
+            return True
+        if any(token in query_text for token in (" compare ", " compared ")):
+            return any(token in query_text for token in (" with ", " against ", " vs ", " versus "))
+        return False
 
     def strip_comparison_preface(self, text):
         cleaned = self.normalize_player_text(text)
@@ -1020,7 +1024,7 @@ class PhysicalChat(Chat):
 
     def resolve_comparison_players(self, query):
         cleaned_query = re.sub(r"\s+", " ", str(query)).strip()
-        parts = re.split(r"\bvs\b|\bversus\b", cleaned_query, flags=re.IGNORECASE)
+        parts = re.split(r"\bvs\b|\bversus\b|\bagainst\b|\bwith\b", cleaned_query, flags=re.IGNORECASE)
         if len(parts) < 2:
             return {
                 "route": self.QUERY_ROUTE_UNCLEAR,
@@ -1044,6 +1048,18 @@ class PhysicalChat(Chat):
         right_player_row, right_position_df, right_raw_position_df = right_resolved
 
         if left_player_row["Player"] == right_player_row["Player"]:
+            return {
+                "route": self.QUERY_ROUTE_UNCLEAR,
+                "query": cleaned_query,
+                "scope": self.classify_scope(cleaned_query),
+            }
+
+        if (
+            left_player_row is None
+            or right_player_row is None
+            or not str(left_player_row.get("Player", "")).strip()
+            or not str(right_player_row.get("Player", "")).strip()
+        ):
             return {
                 "route": self.QUERY_ROUTE_UNCLEAR,
                 "query": cleaned_query,
